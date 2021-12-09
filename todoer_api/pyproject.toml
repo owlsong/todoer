@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "todoer_api"
+version = "0.1.0"
+description = ""
+authors = ["Todd Cooper <todd.coops@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.70.0"
+uvicorn = {extras = ["standard"], version = "^0.15.0"}
+gunicorn = "^20.1.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+black = "^21.11b1"
+ipython = "^7.30.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
