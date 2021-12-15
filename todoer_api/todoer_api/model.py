@@ -5,8 +5,9 @@ import datetime as dt
 
 class TodoerInfo(BaseModel):
     timestamp: str
-    service = "Todoer"
-    version = "0.2.3"
+    service: str
+    data_source: str
+    version: str
 
 
 class Task(BaseModel):

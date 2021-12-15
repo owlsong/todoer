@@ -22,7 +22,7 @@ from todoer_api.test_db import (
     get_db_con,
     CONNECTION_TYPE,
 )
-from todoer_api import __version__
+from todoer_api import __version__, __service_name__
 
 # dictConfig(LogConfig().dict())
 # logger = logging.getLogger("todoer")
@@ -50,6 +50,7 @@ async def model_info():
     db = get_db()  # init DB connection
     return TodoerInfo(
         timestamp=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        service=__service_name__,
         data_source=db.db_type,
         version=__version__,
     )
