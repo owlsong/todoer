@@ -77,6 +77,7 @@ class MongoDatabase(TaskDatabase):
         return response_list
 
     def add(self, task: Task):
+        # OK
         # TODO allocate new ID? return new task
         # ensure task.id not pre-exist
         try:
@@ -91,6 +92,7 @@ class MongoDatabase(TaskDatabase):
         return task
 
     def delete(self, task_id: int):
+        # OK
         try:
             self._get_by_id(task_id, 1)
         except DataLayerException:
@@ -110,7 +112,7 @@ class MongoDatabase(TaskDatabase):
         return task
 
 
-class TestDatabase(TaskDatabase):
+class InMemDatabase(TaskDatabase):
     def __init__(self):
         self.data = []
         self.next_id = 0
@@ -167,7 +169,7 @@ _DB_CON = None
 
 
 def get_db_con(db_type: str) -> TaskDatabase:
-    dbs = {"test": TestDatabase(), "mongo": MongoDatabase()}
+    dbs = {"test": InMemDatabase(), "mongo": MongoDatabase()}
     # logger.info(f"geting db conn of type {db_type}")
     global _DB_CON, CONNECTION_TYPE
 

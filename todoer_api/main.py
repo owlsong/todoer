@@ -15,9 +15,8 @@ from pymongo.common import validate_server_api_or_none
 
 # from todoer_api.model import APIResponse
 from todoer_api.model import Task, TodoerInfo
-from todoer_api.test_db import (
+from todoer_api.data_layer import (
     TaskDatabase,
-    TestDatabase,
     DataLayerException,
     get_db_con,
     CONNECTION_TYPE,
@@ -35,7 +34,6 @@ def get_db() -> TaskDatabase:
     return get_db_con("mongo")
 
 
-# TEST_DATA = TestDatabase()
 app = FastAPI()
 
 
