@@ -6,11 +6,16 @@ import datetime as dt
 class TodoerInfo(BaseModel):
     timestamp: str
     service = "Todoer"
-    version = "0.1.0"
+    version = "0.2.3"
 
 
 class Task(BaseModel):
+    _id: Optional[str] = None
     id: int
+    # project: str
+    # user: str
+    # "project": "HOME",
+    # "user": "anne",
     summary: str
     description: str
     status: str

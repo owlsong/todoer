@@ -1,4 +1,6 @@
 from pydantic import BaseModel
+from logging.config import dictConfig
+import logging
 
 
 class LogConfig(BaseModel):
@@ -29,3 +31,8 @@ class LogConfig(BaseModel):
     loggers = {
         "todoer": {"handlers": ["default"], "level": LOG_LEVEL},
     }
+
+
+def get_logger(name: str):
+    dictConfig(LogConfig().dict())
+    return logging.getLogger("todoer")
