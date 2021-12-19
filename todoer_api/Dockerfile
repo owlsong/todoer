@@ -8,6 +8,8 @@ WORKDIR /app/
 
 FROM base as builder
 
+ARG poetry_build_arg
+
 # add poetry
 ENV PIP_DEFAULT_TIMEOUT=100 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -25,7 +27,8 @@ RUN apk add --no-cache --virtual .build-deps gcc libc-dev make
 
 # install poetry dependancies
 COPY pyproject.toml poetry.lock ./
-RUN poetry export -f requirements.txt | /venv/bin/pip install -r /dev/stdin
+# here we can add --dev to include development 
+RUN poetry export ${poetry_build_arg} -f requirements.txt | /venv/bin/pip install -r /dev/stdin
 
 # copy files to container - recursive
 COPY . /app

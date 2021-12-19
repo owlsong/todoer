@@ -21,7 +21,10 @@ services:
     volumes:
       - mongo_data:/data/db
   todoer-api:
-    build: todoer_api/
+    build: 
+      context: ./todoer_api
+      args:
+        poetry_build_arg: --dev
     ports:
       - "127.0.0.1:8000:8000"
     environment:
