@@ -80,16 +80,20 @@ class MongoDatabase(TaskDatabase):
         # OK
         # TODO allocate new ID? return new task
         # ensure task.id not pre-exist
+        task_id = task.id
         try:
-            self._get_by_id(task.id, 0)
+            self._get_by_id(task_id, 0)
         except DataLayerException:
             raise DataLayerException(
                 f"Error attempted to add task with ID {task.id} but already exists"
             )
         result = self.tasks.insert_one(task.dict())
-        # logger.info(f"post inserted_id {str(result.inserted_id)}")
+        logger.info(f"Inserted task id {str(result.inserted_id)}")
         # logger.info(f"post acknowledged {str(result.acknowledged)}")
-        return task
+
+        # have to use a get as the created timestamp gets chnaged for some reasoin???
+        # return dictionary as converted in outer layer
+        return self._get_by_id(task_id, must_be_equal_to=1)[0]
 
     def delete(self, task_id: int):
         # OK

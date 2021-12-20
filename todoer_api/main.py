@@ -61,13 +61,13 @@ async def test(test_id: int, qry: Optional[str] = None):
 
 
 @app.get("/api/v1/tasks", response_model=List[Task])
-async def tasks():
+async def get_tasks():
     logger.info(f"get all tasks")
     return get_db().get_all()
 
 
 @app.get("/api/v1/tasks/{task_id}", response_model=Task)
-async def task_id(task_id: int):
+async def get_task_id(task_id: int):
     rslt = get_db().get(task_id)
     if len(rslt) == 0:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
@@ -78,8 +78,8 @@ async def task_id(task_id: int):
     return rslt[0]
 
 
-@app.post("/api/v1/tasks")
-async def create_task(task: Task, response: Response):
+@app.post("/api/v1/tasks", status_code=201, response_model=Task)
+async def create_task(task: Task):
     task.created = dt.datetime.now()
     try:
         rslt = get_db().add(task)
@@ -87,20 +87,18 @@ async def create_task(task: Task, response: Response):
         raise HTTPException(
             status_code=409, detail=f"Add task {task.id} already exists"
         )
-    response.status_code = 201
     return rslt
 
 
-@app.delete("/api/v1/tasks/{task_id}")
+@app.delete("/api/v1/tasks/{task_id}", status_code=204)
 async def del_task(task_id: int, response: Response):
     try:
         get_db().delete(task_id)
     except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Delete task {task_id} not found")
-    response.status_code = 204
 
 
-@app.put("/api/v1/tasks/{task_id}")
+@app.put("/api/v1/tasks/{task_id}", response_model=Task)
 async def update_task(task_id: int, task: Task):
     task.created = dt.datetime.now()
     task.id = task_id
