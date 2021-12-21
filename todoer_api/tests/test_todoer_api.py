@@ -7,6 +7,13 @@ import datetime as dt
 
 client = TestClient(app)
 BAD_ID = -123
+BAD_DATA = {"what": "this is a random dict that doe snot match the schema"}
+
+# test plan
+# ---------
+# test - using base test id (avoid having to assume empty)???
+# test - using inmem db
+# test - setup suite as per EG
 
 
 def _create_test_task(task_id: int):
@@ -208,40 +215,31 @@ def test_bad_id_del():
 
 
 def test_bad_id_update():
-    # global BAD_ID
-    # response = client.delete(f"/api/v1/tasks/{BAD_ID}")
-    # assert response.status_code == 404
-    pass
+    global BAD_ID
+    response = client.delete(f"/api/v1/tasks/{BAD_ID}")
+    assert response.status_code == 404
 
 
 def test_bad_data_create():
-    # global BAD_ID
-    # response = client.delete(f"/api/v1/tasks/{BAD_ID}")
-    # assert response.status_code == 404
-    pass
+    global BAD_DATA
+    response = client.post(f"/api/v1/tasks", json=BAD_DATA)
+    assert response.status_code == 422
 
 
 def test_bad_data_update():
-    # does this cover both PUT and POST
-    # expect 422
-    # global BAD_ID
-    # response = client.delete(f"/api/v1/tasks/{BAD_ID}")
-    # assert response.status_code == 404
-    pass
+    global BAD_DATA
+    # initial -> empty
+    new_id = 0
+    _check_tasks_len(0)
+    # create task
+    rslt_new = _post_new_task(new_id)
+    _check_tasks_len(1)
 
+    # update
+    response = client.put(f"/api/v1/tasks/{new_id}", json=BAD_DATA)
+    assert response.status_code == 422
 
-def def_all_tests():
-    # some @app.gets("/api/v1/tasks", response_model=List[Task])
-    # OK   @app.get("/api/v1/tasks/{task_id}", response_model=Task)
-    # some @app.post("/api/v1/tasks")
-    # OK   @app.delete("/api/v1/tasks/{task_id}")
-    #      @app.put("/api/v1/tasks/{task_id}")
-    pass
-
-
-def def_test_plan():
-    # test plan
-    # test - using base test id???
-    # test - using inmem db
-    # test - setup suite as per EG
-    pass
+    # clean-up
+    resp_del = client.delete(f"/api/v1/tasks/{new_id}")
+    assert resp_del.status_code == 204
+    _check_tasks_len(0)
