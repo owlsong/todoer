@@ -14,15 +14,15 @@ class TaskDatabase:
     def __init__(self) -> None:
         self.db_type = ""
 
-    def get(self, task_id: int):
+    def get(self, task_id: int) -> list[dict]:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
         raise NotImplementedError()
 
-    def get_all(self):
+    def get_all(self) -> list[Task]:
         """Get all tasks as a list of tasks, empty if none."""
         raise NotImplementedError()
 
-    def add(self, task: Task):
+    def add(self, task: Task) -> dict:
         """Add a new task and return the created task, (fail if task.id already exists).
 
         invariant:  id's are unique
@@ -31,11 +31,11 @@ class TaskDatabase:
         """
         raise NotImplementedError()
 
-    def delete(self, task_id: int):
+    def delete(self, task_id: int) -> None:
         """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def update(self, task: Task):
+    def update(self, task: Task) -> Task:
         """Update a single task with id=task_id return updated task, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
@@ -113,7 +113,7 @@ class MongoDatabase(TaskDatabase):
                 f"Error attempted to update a task with ID {task.id} but does not exist"
             )
         self.tasks.replace_one({"id": task.id}, task.dict())
-        return task
+        return self._get_by_id(task.id, must_be_equal_to=1)[0]
 
 
 class InMemDatabase(TaskDatabase):

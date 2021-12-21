@@ -10,6 +10,7 @@ BAD_ID = -123
 
 
 def _create_test_task(task_id: int):
+    # created=dt.datetime.now(),
     return Task(
         id=task_id,
         summary=f"Auto-generated test task {task_id}",
@@ -27,18 +28,32 @@ def _post_new_task(task_id: int):
     return Task(**response.json())
 
 
+def _put_update_task(upd_task: Task):
+    # create task
+
+    # remove created field as updated internally
+    # and error when put request tries to convert datetime to json
+    json_dict = upd_task.dict()
+    created_name = "created"
+    if created_name in json_dict:
+        del json_dict[created_name]
+    response = client.put(f"/api/v1/tasks/{upd_task.id}", json=json_dict)
+    assert response.status_code == 200
+    return Task(**response.json())
+
+
 def _compare_tasks(task1: Task, task2: Task):
     dict1 = task1.dict()
     dict2 = task2.dict()
-    key_set = set(list(dict1.keys()) + list(dict2.keys()))
-    compare_keys = [key for key in key_set if key_set != "created"]
 
-    is_equal = True
-    for key in compare_keys:
-        if dict1[key] != dict2[key]:
-            is_equal = False
-            break
-    return is_equal
+    def del_ignored_entries(dict_in):
+        deleted_entry = "created"
+        if deleted_entry in dict_in:
+            del dict_in[deleted_entry]
+
+    dict1 = del_ignored_entries(dict1)
+    dict2 = del_ignored_entries(dict2)
+    return dict1 == dict2
 
 
 def _check_tasks_len(expected_len: int = None):
@@ -127,7 +142,6 @@ def test_get():
     _check_tasks_len(1)
     # get/compare task
     get_task = _get_task(rslt_new.id)
-    assert get_task.id == rslt_new.id
     assert get_task.dict() == rslt_new.dict()
 
     # clean-up
@@ -160,42 +174,54 @@ def test_gets():
 
 
 def test_update():
-    # test initial
-    # add task -> OK
+    new_id = 0
+    # initial -> empty
+    _check_tasks_len(0)
+    # create task
+    rslt_new = _post_new_task(new_id)
+    _check_tasks_len(1)
     # get/compare task
-    # modify task -> put
-    # get/compare task
+    get_task = _get_task(rslt_new.id)
+    assert get_task.dict() == rslt_new.dict()
+    # update
+    upd_task = rslt_new.copy(deep=True)
+    upd_task.description = "modified description"
+    rslt_upd = _put_update_task(upd_task)
+    _compare_tasks(upd_task, rslt_upd)
+
     # clean-up
-    pass
+    resp_del = client.delete(f"/api/v1/tasks/{rslt_new.id}")
+    assert resp_del.status_code == 204
+    _check_tasks_len(0)
 
 
-def test_bad_get():
+def test_bad_id_get():
     global BAD_ID
     response = client.get(f"/api/v1/tasks/{BAD_ID}")
     assert response.status_code == 404
 
 
-def test_bad_del():
+def test_bad_id_del():
     global BAD_ID
     response = client.delete(f"/api/v1/tasks/{BAD_ID}")
     assert response.status_code == 404
 
 
-def test_bad_update():
+def test_bad_id_update():
     # global BAD_ID
     # response = client.delete(f"/api/v1/tasks/{BAD_ID}")
     # assert response.status_code == 404
     pass
 
 
-def test_bad_create():
+def test_bad_data_create():
     # global BAD_ID
     # response = client.delete(f"/api/v1/tasks/{BAD_ID}")
     # assert response.status_code == 404
     pass
 
 
-def test_bad_data():
+def test_bad_data_update():
     # does this cover both PUT and POST
     # expect 422
     # global BAD_ID
@@ -205,11 +231,11 @@ def test_bad_data():
 
 
 def def_all_tests():
-    #       @app.gets("/api/v1/tasks", response_model=List[Task])
-    #       @app.get("/api/v1/tasks/{task_id}", response_model=Task)
-    # do_bad @app.post("/api/v1/tasks")
-    # OK     @app.delete("/api/v1/tasks/{task_id}")
-    #       @app.put("/api/v1/tasks/{task_id}")
+    # some @app.gets("/api/v1/tasks", response_model=List[Task])
+    # OK   @app.get("/api/v1/tasks/{task_id}", response_model=Task)
+    # some @app.post("/api/v1/tasks")
+    # OK   @app.delete("/api/v1/tasks/{task_id}")
+    #      @app.put("/api/v1/tasks/{task_id}")
     pass
 
 
