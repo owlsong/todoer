@@ -29,8 +29,6 @@ logger = get_logger("todoer")
 
 
 def get_db() -> TaskDatabase:
-    # global TEST_DATA
-    # return TEST_DATA
     return get_db_con("mongo")
 
 
@@ -78,6 +76,7 @@ async def get_task_id(task_id: int):
 @app.post("/api/v1/tasks", status_code=201, response_model=Task)
 async def create_task(task: Task):
     task.created = dt.datetime.now()
+    task.updated = task.created
     try:
         rslt = get_db().add(task)
     except DataLayerException:
@@ -87,19 +86,19 @@ async def create_task(task: Task):
     return rslt.dict()
 
 
-@app.delete("/api/v1/tasks/{task_id}", status_code=204)
-async def del_task(task_id: int, response: Response):
-    try:
-        get_db().delete(task_id)
-    except DataLayerException:
-        raise HTTPException(status_code=404, detail=f"Delete task {task_id} not found")
-
-
 @app.put("/api/v1/tasks/{task_id}", response_model=Task)
 async def update_task(task_id: int, task: Task):
-    task.created = dt.datetime.now()
+    task.updated = dt.datetime.now()
     task.id = task_id
     try:
         return get_db().update(task).dict()
     except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+
+@app.delete("/api/v1/tasks/{task_id}", status_code=204)
+async def del_task(task_id: int):
+    try:
+        get_db().delete(task_id)
+    except DataLayerException:
+        raise HTTPException(status_code=404, detail=f"Delete task {task_id} not found")

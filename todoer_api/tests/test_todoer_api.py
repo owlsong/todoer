@@ -28,7 +28,6 @@ def _create_test_task(task_id: int):
 
 
 def _post_new_task(task_id: int):
-    # create task
     new_task = _create_test_task(task_id)
     response = client.post(f"/api/v1/tasks", json=new_task.dict())
     assert response.status_code == 201
@@ -36,31 +35,14 @@ def _post_new_task(task_id: int):
 
 
 def _put_update_task(upd_task: Task):
-    # create task
-
-    # remove created field as updated internally
-    # and error when put request tries to convert datetime to json
-    json_dict = upd_task.dict()
-    created_name = "created"
-    if created_name in json_dict:
-        del json_dict[created_name]
-    response = client.put(f"/api/v1/tasks/{upd_task.id}", json=json_dict)
+    # use body method to remove fields that cannot be serialised by requests
+    response = client.put(f"/api/v1/tasks/{upd_task.id}", json=upd_task.body())
     assert response.status_code == 200
     return Task(**response.json())
 
 
 def _compare_tasks(task1: Task, task2: Task):
-    dict1 = task1.dict()
-    dict2 = task2.dict()
-
-    def del_ignored_entries(dict_in):
-        deleted_entry = "created"
-        if deleted_entry in dict_in:
-            del dict_in[deleted_entry]
-
-    dict1 = del_ignored_entries(dict1)
-    dict2 = del_ignored_entries(dict2)
-    return dict1 == dict2
+    return task1.body() == task2.body()
 
 
 def _check_tasks_len(expected_len: int = None):

@@ -33,12 +33,12 @@ class TaskDatabase:
         """
         raise NotImplementedError()
 
-    def delete(self, task_id: int) -> None:
-        """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
-        raise NotImplementedError()
-
     def update(self, task: Task) -> Task:
         """Update a single task with id=task_id return updated task, (fail if task_id does not exist)."""
+        raise NotImplementedError()
+
+    def delete(self, task_id: int) -> None:
+        """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
 
@@ -54,8 +54,8 @@ class MongoDatabase(TaskDatabase):
         # mongodb://root:example@mongo:27017/
         # mongodb://localhost:27017/
         self.client = pymongo.MongoClient(self.url)
-        self.db = self.client["taskdb"]
-        self.tasks = self.db["tasks"]
+        self.db = self.client["taskdb"]  # db
+        self.tasks = self.db["tasks"]  # collection
 
     def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
@@ -90,6 +90,17 @@ class MongoDatabase(TaskDatabase):
         # return get as the db truncates the datetime so the actual object is different
         return self.get(task_id)
 
+    def update(self, task: Task) -> Task:
+        try:
+            orig_task = self.get(task.id)
+        except DataLayerException:
+            raise DataLayerException(
+                f"Error attempted to update a task with ID {task.id} but does not exist"
+            )
+        task.created = orig_task.created
+        self.tasks.replace_one({"id": task.id}, task.dict())
+        return self.get(task.id)
+
     def delete(self, task_id: int) -> None:
         try:
             self._get_by_id(task_id, 1)
@@ -98,16 +109,6 @@ class MongoDatabase(TaskDatabase):
                 f"Error attempted to delete task with ID {task_id} but does not exist"
             )
         self.tasks.delete_one({"id": task_id})
-
-    def update(self, task: Task) -> Task:
-        try:
-            self._get_by_id(task.id, 1)
-        except DataLayerException:
-            raise DataLayerException(
-                f"Error attempted to update a task with ID {task.id} but does not exist"
-            )
-        self.tasks.replace_one({"id": task.id}, task.dict())
-        return self.get(task.id)
 
 
 class InMemDatabase(TaskDatabase):
