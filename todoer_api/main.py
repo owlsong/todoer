@@ -102,3 +102,11 @@ async def del_task(task_id: int):
         get_db().delete(task_id)
     except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Delete task {task_id} not found")
+
+
+@app.delete("/admin/v1/tasks", status_code=204)
+async def del_task():
+    try:
+        get_db().delete_all()
+    except DataLayerException:
+        raise HTTPException(status_code=404, detail=f"Failed to delete all tasks")

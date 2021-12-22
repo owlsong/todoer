@@ -41,6 +41,10 @@ class TaskDatabase:
         """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
+    def delete_all(self) -> None:
+        """Delete all tasks return nothing, (do nothing if no tasks exist)."""
+        raise NotImplementedError()
+
 
 class MongoDatabase(TaskDatabase):
     """Stores tasks in a mongo database public API refers to Task objects (internal as dicts)."""
@@ -109,6 +113,9 @@ class MongoDatabase(TaskDatabase):
                 f"Error attempted to delete task with ID {task_id} but does not exist"
             )
         self.tasks.delete_one({"id": task_id})
+
+    def delete_all(self) -> None:
+        self.tasks.delete_many({})
 
 
 class InMemDatabase(TaskDatabase):

@@ -77,6 +77,23 @@ def _get_all_tasks():
     return rslts
 
 
+def _setup_test():
+    resp_del = client.delete(f"/admin/v1/tasks")
+    assert resp_del.status_code == 204
+    # initial -> empty
+    _check_tasks_len(0)
+
+
+def _cleanup_test(task_id: int = None):
+    if task_id is None:
+        resp_del = client.delete(f"/admin/v1/tasks")
+        pass
+    else:
+        resp_del = client.delete(f"/api/v1/tasks/{task_id}")
+    assert resp_del.status_code == 204
+    _check_tasks_len(0)
+
+
 def test_version():
     assert __version__ == "0.3.0"
 
@@ -99,51 +116,46 @@ def test_read_info():
     response = client.get("/api/v1/info")
     assert response.status_code == 200
     body = response.json()
-    # assert response.json() == {"msg": "Hello World"}
     assert body["service"] == __service_name__
     assert body["data_source"] == "mongo"
     assert body["version"] == __version__
 
 
-def test_initial_state():
+def test_setup_test():
+    _setup_test()
     _check_tasks_len(0)
 
 
 def test_add_del_empty():
-    # initial -> empty
-    _check_tasks_len(0)
+    _setup_test()
+
     # create task
     new_task = _post_new_task(0)
     _check_tasks_len(1)
-    # del task -> OK
-    resp_del = client.delete(f"/api/v1/tasks/{new_task.id}")
-    assert resp_del.status_code == 204
-    # get tasks -> empty
-    _check_tasks_len(0)
+
+    _cleanup_test(new_task.id)
 
 
 def test_get():
+    _setup_test()
     new_id = 0
-    # initial -> empty
-    _check_tasks_len(0)
+
     # create task
     rslt_new = _post_new_task(new_id)
     _check_tasks_len(1)
+
     # get/compare task
     get_task = _get_task(rslt_new.id)
-    assert get_task.dict() == rslt_new.dict()
+    _compare_tasks(get_task, rslt_new)
 
-    # clean-up
-    resp_del = client.delete(f"/api/v1/tasks/{rslt_new.id}")
-    assert resp_del.status_code == 204
-    _check_tasks_len(0)
+    _cleanup_test(rslt_new.id)
 
 
 def test_gets():
-    num_tasks = 3
-    # initial -> empty
-    _check_tasks_len(0)
+    _setup_test()
+
     # create tasks
+    num_tasks = 3
     new_tasks = {}
     for id in range(num_tasks):
         new_tasks[id] = _post_new_task(id)
@@ -153,35 +165,29 @@ def test_gets():
     assert len(response_tasks) == num_tasks
     for i in range(len(response_tasks)):
         response_task = response_tasks[i]
-        assert response_task.dict() == new_tasks[response_task.id].dict()
+        _compare_tasks(response_task, new_tasks[response_task.id])
 
-    # clean-up
-    for task in response_tasks:
-        resp_del = client.delete(f"/api/v1/tasks/{task.id}")
-        assert resp_del.status_code == 204
-    _check_tasks_len(0)
+    _cleanup_test()
 
 
 def test_update():
+    _setup_test()
     new_id = 0
-    # initial -> empty
-    _check_tasks_len(0)
+
     # create task
     rslt_new = _post_new_task(new_id)
     _check_tasks_len(1)
     # get/compare task
     get_task = _get_task(rslt_new.id)
-    assert get_task.dict() == rslt_new.dict()
+    assert _compare_tasks(get_task, rslt_new)
+
     # update
     upd_task = rslt_new.copy(deep=True)
     upd_task.description = "modified description"
     rslt_upd = _put_update_task(upd_task)
     _compare_tasks(upd_task, rslt_upd)
 
-    # clean-up
-    resp_del = client.delete(f"/api/v1/tasks/{rslt_new.id}")
-    assert resp_del.status_code == 204
-    _check_tasks_len(0)
+    _cleanup_test(rslt_new.id)
 
 
 def test_bad_id_get():
@@ -209,10 +215,10 @@ def test_bad_data_create():
 
 
 def test_bad_data_update():
+    _setup_test()
     global BAD_DATA
-    # initial -> empty
     new_id = 0
-    _check_tasks_len(0)
+
     # create task
     rslt_new = _post_new_task(new_id)
     _check_tasks_len(1)
@@ -221,7 +227,4 @@ def test_bad_data_update():
     response = client.put(f"/api/v1/tasks/{new_id}", json=BAD_DATA)
     assert response.status_code == 422
 
-    # clean-up
-    resp_del = client.delete(f"/api/v1/tasks/{new_id}")
-    assert resp_del.status_code == 204
-    _check_tasks_len(0)
+    _cleanup_test(new_id)
