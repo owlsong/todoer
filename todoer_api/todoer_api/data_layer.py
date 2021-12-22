@@ -11,10 +11,12 @@ class DataLayerException(Exception):
 
 
 class TaskDatabase:
+    """Stores tasks in a mongo database publis API refers to Task objects (internal as dicts)."""
+
     def __init__(self) -> None:
         self.db_type = ""
 
-    def get(self, task_id: int) -> list[dict]:
+    def get(self, task_id: int) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
         raise NotImplementedError()
 
@@ -22,7 +24,7 @@ class TaskDatabase:
         """Get all tasks as a list of tasks, empty if none."""
         raise NotImplementedError()
 
-    def add(self, task: Task) -> dict:
+    def add(self, task: Task) -> Task:
         """Add a new task and return the created task, (fail if task.id already exists).
 
         invariant:  id's are unique
@@ -41,6 +43,8 @@ class TaskDatabase:
 
 
 class MongoDatabase(TaskDatabase):
+    """Stores tasks in a mongo database public API refers to Task objects (internal as dicts)."""
+
     def __init__(self) -> None:
         super().__init__()
         self.username = "localdev"
@@ -52,10 +56,9 @@ class MongoDatabase(TaskDatabase):
         self.client = pymongo.MongoClient(self.url)
         self.db = self.client["taskdb"]
         self.tasks = self.db["tasks"]
-        # to insert     mongo_collection.insert_one(pydanticClass.dict())
-        # result = msg_collection.insert_one(message.dict())
 
-    def _get_by_id(self, task_id, must_be_equal_to=None):
+    def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
+        """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
         item_list = list(self.tasks.find({"id": task_id}))
         num = len(item_list)
         if must_be_equal_to is not None and must_be_equal_to != num:
@@ -64,20 +67,15 @@ class MongoDatabase(TaskDatabase):
             )
         return item_list
 
-    def get(self, task_id: int):
-        # OK
-        return self._get_by_id(task_id)
+    def get(self, task_id: int) -> Task:
+        # return self._get_by_id(task_id)
+        return Task(**self._get_by_id(task_id, must_be_equal_to=1)[0])
 
     def get_all(self):
-        # OK
         task_list = self.tasks.find()
-        response_list = []
-        for task in task_list:
-            response_list.append(Task(**task))
-        return response_list
+        return [Task(**task) for task in task_list]
 
-    def add(self, task: Task):
-        # OK
+    def add(self, task: Task) -> Task:
         # TODO allocate new ID? return new task
         # ensure task.id not pre-exist
         task_id = task.id
@@ -89,14 +87,10 @@ class MongoDatabase(TaskDatabase):
             )
         result = self.tasks.insert_one(task.dict())
         logger.info(f"Inserted task id {str(result.inserted_id)}")
-        # logger.info(f"post acknowledged {str(result.acknowledged)}")
+        # return get as the db truncates the datetime so the actual object is different
+        return self.get(task_id)
 
-        # have to use a get as the created timestamp gets chnaged for some reasoin???
-        # return dictionary as converted in outer layer
-        return self._get_by_id(task_id, must_be_equal_to=1)[0]
-
-    def delete(self, task_id: int):
-        # OK
+    def delete(self, task_id: int) -> None:
         try:
             self._get_by_id(task_id, 1)
         except DataLayerException:
@@ -105,7 +99,7 @@ class MongoDatabase(TaskDatabase):
             )
         self.tasks.delete_one({"id": task_id})
 
-    def update(self, task: Task):
+    def update(self, task: Task) -> Task:
         try:
             self._get_by_id(task.id, 1)
         except DataLayerException:
@@ -113,7 +107,7 @@ class MongoDatabase(TaskDatabase):
                 f"Error attempted to update a task with ID {task.id} but does not exist"
             )
         self.tasks.replace_one({"id": task.id}, task.dict())
-        return self._get_by_id(task.id, must_be_equal_to=1)[0]
+        return self.get(task.id)
 
 
 class InMemDatabase(TaskDatabase):

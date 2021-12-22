@@ -62,20 +62,17 @@ async def test(test_id: int, qry: Optional[str] = None):
 
 @app.get("/api/v1/tasks", response_model=List[Task])
 async def get_tasks():
-    logger.info(f"get all tasks")
+    # TODO why does list[Task] work
     return get_db().get_all()
 
 
 @app.get("/api/v1/tasks/{task_id}", response_model=Task)
 async def get_task_id(task_id: int):
-    rslt = get_db().get(task_id)
-    if len(rslt) == 0:
+    try:
+        rslt = get_db().get(task_id)
+    except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    if len(rslt) > 1:
-        raise HTTPException(
-            status_code=500, detail=f"Too many tasks found for ID {task_id}"
-        )
-    return rslt[0]
+    return rslt.dict()
 
 
 @app.post("/api/v1/tasks", status_code=201, response_model=Task)
@@ -87,7 +84,7 @@ async def create_task(task: Task):
         raise HTTPException(
             status_code=409, detail=f"Add task {task.id} already exists"
         )
-    return rslt
+    return rslt.dict()
 
 
 @app.delete("/api/v1/tasks/{task_id}", status_code=204)
@@ -103,6 +100,6 @@ async def update_task(task_id: int, task: Task):
     task.created = dt.datetime.now()
     task.id = task_id
     try:
-        return get_db().update(task)
+        return get_db().update(task).dict()
     except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")

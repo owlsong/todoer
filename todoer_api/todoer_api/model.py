@@ -22,6 +22,7 @@ class Task(BaseModel):
     status: str
     # assignee: str
     created: Optional[dt.datetime] = None
+    # updated: Optional[dt.datetime] = None
     tags: List[str] = []
     # model_parameters: dict = {}
     class Config:
@@ -34,6 +35,15 @@ class Task(BaseModel):
                 "created": dt.datetime(2020, 5, 23, 7, 53, 34, 305),
                 "tags": [],
             }
+        }
+
+    def body(self):
+        """Return a dict representing the JSON that is REST friendly."""
+        # currently just exclude datetime fields
+        exclude_fields = ["created", "updated"]
+        json = self.json()
+        return {
+            key: value for (key, value) in json.items() if key not in exclude_fields
         }
 
 
