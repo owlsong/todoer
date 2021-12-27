@@ -29,7 +29,10 @@ logger = get_logger("todoer")
 
 
 def get_db() -> TaskDatabase:
-    return get_db_con("mongo")
+    # TODO make this a variable so don't reconnect each time
+    # db_type = "mongo"
+    db_type = "in_memory"
+    return get_db_con(db_type)
 
 
 app = FastAPI()
@@ -75,21 +78,16 @@ async def get_task_id(task_id: int):
 
 @app.post("/api/v1/tasks", status_code=201, response_model=Task)
 async def create_task(task: Task):
-    task.created = dt.datetime.now()
-    task.updated = task.created
     try:
-        rslt = get_db().add(task)
+        return get_db().add(task).dict()
     except DataLayerException:
         raise HTTPException(
             status_code=409, detail=f"Add task {task.id} already exists"
         )
-    return rslt.dict()
 
 
 @app.put("/api/v1/tasks/{task_id}", response_model=Task)
 async def update_task(task_id: int, task: Task):
-    task.updated = dt.datetime.now()
-    task.id = task_id
     try:
         return get_db().update(task).dict()
     except DataLayerException:

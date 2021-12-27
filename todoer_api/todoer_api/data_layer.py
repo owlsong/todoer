@@ -75,7 +75,7 @@ class MongoDatabase(TaskDatabase):
         # return self._get_by_id(task_id)
         return Task(**self._get_by_id(task_id, must_be_equal_to=1)[0])
 
-    def get_all(self):
+    def get_all(self) -> list[Task]:
         task_list = self.tasks.find()
         return [Task(**task) for task in task_list]
 
@@ -87,8 +87,12 @@ class MongoDatabase(TaskDatabase):
             self._get_by_id(task_id, 0)
         except DataLayerException:
             raise DataLayerException(
-                f"Error attempted to add task with ID {task.id} but already exists"
+                f"Error attempted to add task with ID {task_id} but already exists"
             )
+
+        task.created = dt.datetime.now()
+        task.updated = task.created
+
         result = self.tasks.insert_one(task.dict())
         logger.info(f"Inserted task id {str(result.inserted_id)}")
         # return get as the db truncates the datetime so the actual object is different
@@ -97,11 +101,12 @@ class MongoDatabase(TaskDatabase):
     def update(self, task: Task) -> Task:
         try:
             orig_task = self.get(task.id)
+            task.updated = dt.datetime.now()
+            task.created = orig_task.created
         except DataLayerException:
             raise DataLayerException(
                 f"Error attempted to update a task with ID {task.id} but does not exist"
             )
-        task.created = orig_task.created
         self.tasks.replace_one({"id": task.id}, task.dict())
         return self.get(task.id)
 
@@ -120,54 +125,57 @@ class MongoDatabase(TaskDatabase):
 
 class InMemDatabase(TaskDatabase):
     def __init__(self):
-        self.data = []
-        self.next_id = 0
+        self.data = {}  # Dict[id] -> Task
+        # self.next_id = 0
 
-        def create_task(i):
-            return Task(
-                id=i,
-                summary=f"Summary for task {i}",
-                description=f"Desc for task {i}",
-                status="Backlog",
-                assignee="todd",
-                created=dt.datetime.now(),
-            )
+    def _get_task(self, task_id: int):
+        try:
+            return self.data[task_id]
+        except KeyError:
+            return None
 
-        for i in range(3):
-            # self.data.append(create_task(i))
-            self.add(create_task(i))
+    def get(self, task_id: int) -> Task:
+        try:
+            return self.data[task_id]
+        except KeyError:
+            raise DataLayerException(f"Task with ID {task_id} could not be found")
 
-    def _get_index(self, task_id):
-        offsets = [i for i, task in enumerate(self.data) if task.id == task_id]
-        if len(offsets) != 1:
+    def get_all(self) -> list[Task]:
+        return list(self.data.values())
+
+    def add(self, task: Task) -> Task:
+        if self._get_task(task.id) is None:
+            task.created = dt.datetime.now()
+            task.updated = task.created
+            self.data[task.id] = task
+        else:
             raise DataLayerException(
-                f"Error tried to index task {task_id} but did not have 1 occurance"
+                f"Error attempting to add Task {task.id} already exists"
             )
-        return offsets[0]
+        return self.get(task.id)
 
-    def get(self, task_id: int):
-        return list(filter(lambda x: task_id == x.id, self.data))
+    def update(self, task: Task) -> Task:
+        orig_task = self._get_task(task.id)
+        if orig_task is None:
+            raise DataLayerException(
+                f"Error attempting to update Task {task.id} does not exist"
+            )
+        else:
+            task.updated = dt.datetime.now()
+            task.created = orig_task.created
+            self.data[task.id] = task
+        return self.get(task.id)
 
-    def get_all(self):
-        return self.data
+    def delete(self, task_id: int) -> None:
+        try:
+            del self.data[task_id]
+        except KeyError:
+            raise DataLayerException(
+                f"Delete task with ID {task_id} could not be found"
+            )
 
-    def add(self, task: Task):
-        task.id = self.next_id
-        self.next_id += 1
-        self.data.append(task)
-        return task
-
-    def delete(self, task_id: int):
-        return self.data.pop(self._get_index(task_id))
-
-    def update(self, task: Task):
-        self.data[self._get_index(task.id)] = task
-        return task
-
-    def __str__(self) -> str:
-        strs = [str(x) for x in self.data]
-        rslt = "data => [" + ",".join(strs) + "]"
-        return rslt
+    def delete_all(self) -> None:
+        self.data.clear()
 
 
 CONNECTION_TYPE = ""
@@ -175,7 +183,7 @@ _DB_CON = None
 
 
 def get_db_con(db_type: str) -> TaskDatabase:
-    dbs = {"test": InMemDatabase(), "mongo": MongoDatabase()}
+    dbs = {"in_memory": InMemDatabase(), "mongo": MongoDatabase()}
     # logger.info(f"geting db conn of type {db_type}")
     global _DB_CON, CONNECTION_TYPE
 

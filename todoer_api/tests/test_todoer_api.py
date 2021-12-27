@@ -1,5 +1,6 @@
 from todoer_api import __version__, __service_name__
 from todoer_api.model import Task
+import todoer_api.data_layer as dl
 from fastapi.testclient import TestClient
 from main import app
 import datetime as dt
@@ -117,7 +118,7 @@ def test_read_info():
     assert response.status_code == 200
     body = response.json()
     assert body["service"] == __service_name__
-    assert body["data_source"] == "mongo"
+    assert body["data_source"] == dl.CONNECTION_TYPE
     assert body["version"] == __version__
 
 
