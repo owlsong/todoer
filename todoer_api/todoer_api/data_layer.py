@@ -10,8 +10,15 @@ class DataLayerException(Exception):
     pass
 
 
+class TaskIdGenerator:
+    """Class to generate ids for tasks."""
+
+    def get_next_id(self, user: str, project: str) -> int:
+        pass
+
+
 class TaskDatabase:
-    """Stores tasks in a mongo database publis API refers to Task objects (internal as dicts)."""
+    """Persists tasks internally whilst exposing the CRUD operations on Task objects."""
 
     def __init__(self) -> None:
         self.db_type = ""
@@ -44,6 +51,31 @@ class TaskDatabase:
     def delete_all(self) -> None:
         """Delete all tasks return nothing, (do nothing if no tasks exist)."""
         raise NotImplementedError()
+
+
+class TaskIdGeneratorMogo(TaskIdGenerator):
+    def __init__(self, **kwargs) -> None:
+        super().__init__()
+        self.client = kwargs["client"]
+        self.db = self.client["id"]  # db
+        self.id_collection = self.db["id"]  # collection
+        # id indexed by: user: str, project: str
+
+    def get_next_id(self, user: str, project: str) -> int:
+        index_dict = {"user": user, "project": project}
+        id_list = list(self.id_collection.find(index_dict))
+        if len(id_list) == 0:
+            # no IDs allocated yet
+            insert_dict = index_dict
+            insert_dict["id"] = 1
+            self.id_collection.insert_one(insert_dict)
+            return 0
+        else:
+            upd_dict = id_list[0]
+            rslt = upd_dict["id"]
+            upd_dict["id"] = rslt + 1
+            self.tasks.replace_one(index_dict, upd_dict)
+            return rslt
 
 
 class MongoDatabase(TaskDatabase):
@@ -123,9 +155,27 @@ class MongoDatabase(TaskDatabase):
         self.tasks.delete_many({})
 
 
+class TaskIdGeneratorInmem(TaskIdGenerator):
+    def __init__(self) -> None:
+        super().__init__()
+        # id indexed by: user: str, project: str
+        self.ids = {}
+
+    def get_next_id(self, user: str, project: str) -> int:
+        index = (user, project)
+        try:
+            rslt = self.ids[index]
+            self.ids[index] = rslt + 1
+            return rslt
+        except KeyError:
+            self.ids[index] = 1
+            return 0
+
+
 class InMemDatabase(TaskDatabase):
     def __init__(self):
         self.data = {}  # Dict[id] -> Task
+        self.id_gen = TaskIdGeneratorInmem()
         # self.next_id = 0
 
     def _get_task(self, task_id: int):
@@ -144,15 +194,17 @@ class InMemDatabase(TaskDatabase):
         return list(self.data.values())
 
     def add(self, task: Task) -> Task:
-        if self._get_task(task.id) is None:
+        new_id = self.id_gen.get_next_id(task.owner, task.project)
+        if self._get_task(new_id) is None:
+            task.id = new_id
             task.created = dt.datetime.now()
             task.updated = task.created
             self.data[task.id] = task
         else:
             raise DataLayerException(
-                f"Error attempting to add Task {task.id} already exists"
+                f"Error attempting to add Task {new_id} already exists"
             )
-        return self.get(task.id)
+        return self.get(new_id)
 
     def update(self, task: Task) -> Task:
         orig_task = self._get_task(task.id)

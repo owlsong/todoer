@@ -13,12 +13,10 @@ class TodoerInfo(BaseModel):
 class Task(BaseModel):
     _id: Optional[str] = None
     id: int
-    # project: str
-    # user: str
-    # "project": "HOME",
-    # "user": "anne",
+    owner: str
+    project: str
     summary: str
-    description: str
+    description: Optional[str] = ""
     status: str
     # assignee: str
     created: Optional[dt.datetime] = None
@@ -29,6 +27,8 @@ class Task(BaseModel):
         schema_extra = {
             "example": {
                 "id": 1,
+                "owner": "anne",
+                "project": "HOME",
                 "summary": "Example do laundry",
                 "description": "Wask dry and fold them",
                 "status": "WIP",
@@ -37,10 +37,12 @@ class Task(BaseModel):
             }
         }
 
-    def body(self):
+    def body(self, include_id=False):
         """Return a dict representing the JSON that is REST friendly."""
         # currently just exclude datetime fields
         exclude_fields = ["created", "updated"]
+        if not include_id:
+            exclude_fields.append("id")
         json_dict = self.dict()
         return {
             key: value

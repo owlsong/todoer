@@ -1,11 +1,14 @@
+from pydantic.tools import parse_obj_as
 from todoer_api import __version__, __service_name__
 from todoer_api.model import Task
 import todoer_api.data_layer as dl
 from fastapi.testclient import TestClient
 from main import app
 import datetime as dt
+from config import get_logger
 
 
+logger = get_logger("todoer")
 client = TestClient(app)
 BAD_ID = -123
 BAD_DATA = {"what": "this is a random dict that doe snot match the schema"}
@@ -17,33 +20,50 @@ BAD_DATA = {"what": "this is a random dict that doe snot match the schema"}
 # test - setup suite as per EG
 
 
-def _create_test_task(task_id: int):
-    # created=dt.datetime.now(),
-    return Task(
-        id=task_id,
-        summary=f"Auto-generated test task {task_id}",
-        description=f"Description for task {task_id}",
-        status="Backlog",
-        assignee="tester",
-    )
+def task_to_json(task: Task, exclude_fields: list[str] = []):
+    """Return a dict representing the JSON that is REST friendly."""
+    # currently just exclude datetime fields
+    # exclude_fields = ["created", "updated"]
+    # if not include_id:
+    #     exclude_fields.append("id")
+    json_dict = task.dict()
+    return {
+        key: value for (key, value) in json_dict.items() if key not in exclude_fields
+    }
 
 
-def _post_new_task(task_id: int):
-    new_task = _create_test_task(task_id)
+def _post_new_task() -> Task:
+    def _create_test_task() -> Task:
+        # created=dt.datetime.now(),
+        # set a dummy value of id will be auto-generated
+        return Task(
+            id=0,
+            owner="test_user",
+            project="test_project",
+            summary=f"Auto-generated test task",
+            description=f"Description for test task",
+            status="Backlog",
+            assignee="test_user",
+        )
+
+    new_task = _create_test_task()
     response = client.post(f"/api/v1/tasks", json=new_task.dict())
     assert response.status_code == 201
     return Task(**response.json())
 
 
 def _put_update_task(upd_task: Task):
-    # use body method to remove fields that cannot be serialised by requests
-    response = client.put(f"/api/v1/tasks/{upd_task.id}", json=upd_task.body())
+    exclude_fields = ["created", "updated"]
+    response = client.put(
+        f"/api/v1/tasks/{upd_task.id}", json=task_to_json(upd_task, exclude_fields)
+    )
     assert response.status_code == 200
     return Task(**response.json())
 
 
 def _compare_tasks(task1: Task, task2: Task):
-    return task1.body() == task2.body()
+    exclude_fields = ["created", "updated"]
+    return task_to_json(task1, exclude_fields) == task_to_json(task2, exclude_fields)
 
 
 def _check_tasks_len(expected_len: int = None):
@@ -131,7 +151,7 @@ def test_add_del_empty():
     _setup_test()
 
     # create task
-    new_task = _post_new_task(0)
+    new_task = _post_new_task()
     _check_tasks_len(1)
 
     _cleanup_test(new_task.id)
@@ -139,16 +159,14 @@ def test_add_del_empty():
 
 def test_get():
     _setup_test()
-    new_id = 0
 
     # create task
-    rslt_new = _post_new_task(new_id)
+    rslt_new = _post_new_task()
     _check_tasks_len(1)
 
     # get/compare task
     get_task = _get_task(rslt_new.id)
     _compare_tasks(get_task, rslt_new)
-
     _cleanup_test(rslt_new.id)
 
 
@@ -159,7 +177,9 @@ def test_gets():
     num_tasks = 3
     new_tasks = {}
     for id in range(num_tasks):
-        new_tasks[id] = _post_new_task(id)
+        new_task = _post_new_task()
+        new_tasks[new_task.id] = new_task
+
     _check_tasks_len(num_tasks)
     # get/compare task
     response_tasks = _get_all_tasks()
@@ -173,21 +193,26 @@ def test_gets():
 
 def test_update():
     _setup_test()
-    new_id = 0
 
     # create task
-    rslt_new = _post_new_task(new_id)
+    rslt_new = _post_new_task()
     _check_tasks_len(1)
+    logger.info(f"test_update createred task {rslt_new.id}")
     # get/compare task
     get_task = _get_task(rslt_new.id)
     assert _compare_tasks(get_task, rslt_new)
+    logger.info(f"test_update compared new task {rslt_new.id} OK")
 
     # update
     upd_task = rslt_new.copy(deep=True)
     upd_task.description = "modified description"
+    logger.info(f"test_update about to update task {upd_task.id}")
+    logger.info(f"test_update update task {str(upd_task.body())}")
     rslt_upd = _put_update_task(upd_task)
     _compare_tasks(upd_task, rslt_upd)
+    logger.info(f"test_update compared upd task {rslt_new.id} OK")
 
+    logger.info(f"test_update cleanup")
     _cleanup_test(rslt_new.id)
 
 
@@ -218,14 +243,13 @@ def test_bad_data_create():
 def test_bad_data_update():
     _setup_test()
     global BAD_DATA
-    new_id = 0
 
     # create task
-    rslt_new = _post_new_task(new_id)
+    rslt_new = _post_new_task()
     _check_tasks_len(1)
 
     # update
-    response = client.put(f"/api/v1/tasks/{new_id}", json=BAD_DATA)
+    response = client.put(f"/api/v1/tasks/{rslt_new.id}", json=BAD_DATA)
     assert response.status_code == 422
 
-    _cleanup_test(new_id)
+    _cleanup_test(rslt_new.id)
