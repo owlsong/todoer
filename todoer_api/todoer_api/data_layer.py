@@ -22,6 +22,7 @@ class TaskDatabase:
 
     def __init__(self) -> None:
         self.db_type = ""
+        self.id_gen = None
 
     def get(self, task_id: int) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
@@ -56,26 +57,29 @@ class TaskDatabase:
 class TaskIdGeneratorMogo(TaskIdGenerator):
     def __init__(self, **kwargs) -> None:
         super().__init__()
-        self.client = kwargs["client"]
-        self.db = self.client["id"]  # db
-        self.id_collection = self.db["id"]  # collection
+        # self.client = kwargs["client"]
+        # self.db_name = kwargs["db_name"]
+        self.collection_name = "id_generator"
+        # self.db = self.client[self.db_name]
+        self.db = kwargs["db"]
+        self.id_collection = self.db[self.collection_name]
         # id indexed by: user: str, project: str
 
     def get_next_id(self, user: str, project: str) -> int:
         index_dict = {"user": user, "project": project}
         id_list = list(self.id_collection.find(index_dict))
         if len(id_list) == 0:
-            # no IDs allocated yet
+            # no IDs allocated yet -> current=0 next=1
             insert_dict = index_dict
             insert_dict["id"] = 1
             self.id_collection.insert_one(insert_dict)
             return 0
         else:
             upd_dict = id_list[0]
-            rslt = upd_dict["id"]
-            upd_dict["id"] = rslt + 1
-            self.tasks.replace_one(index_dict, upd_dict)
-            return rslt
+            curr_id = upd_dict["id"]
+            upd_dict["id"] = curr_id + 1
+            self.id_collection.replace_one(index_dict, upd_dict)
+            return curr_id
 
 
 class MongoDatabase(TaskDatabase):
@@ -87,11 +91,14 @@ class MongoDatabase(TaskDatabase):
         self.password = "localdev"
         self.host = "mongo"
         self.url = f"mongodb://{self.username}:{self.password}@{self.host}:27017/"
+        self.db_name = "taskdb"
+        self.collection_name = "tasks"
         # mongodb://root:example@mongo:27017/
         # mongodb://localhost:27017/
         self.client = pymongo.MongoClient(self.url)
-        self.db = self.client["taskdb"]  # db
-        self.tasks = self.db["tasks"]  # collection
+        self.db = self.client[self.db_name]
+        self.tasks = self.db[self.collection_name]
+        self.id_gen = TaskIdGeneratorMogo(db=self.db)
 
     def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
@@ -112,23 +119,23 @@ class MongoDatabase(TaskDatabase):
         return [Task(**task) for task in task_list]
 
     def add(self, task: Task) -> Task:
-        # TODO allocate new ID? return new task
+        # set admin info incl;duiiong the new id
+        task.id = self.id_gen.get_next_id(task.owner, task.project)
+        task.created = dt.datetime.now()
+        task.updated = task.created
+
         # ensure task.id not pre-exist
-        task_id = task.id
         try:
-            self._get_by_id(task_id, 0)
+            self._get_by_id(task.id, 0)
         except DataLayerException:
             raise DataLayerException(
                 f"Error attempted to add task with ID {task_id} but already exists"
             )
 
-        task.created = dt.datetime.now()
-        task.updated = task.created
-
         result = self.tasks.insert_one(task.dict())
         logger.info(f"Inserted task id {str(result.inserted_id)}")
         # return get as the db truncates the datetime so the actual object is different
-        return self.get(task_id)
+        return self.get(task.id)
 
     def update(self, task: Task) -> Task:
         try:
@@ -174,6 +181,7 @@ class TaskIdGeneratorInmem(TaskIdGenerator):
 
 class InMemDatabase(TaskDatabase):
     def __init__(self):
+        super().__init__()
         self.data = {}  # Dict[id] -> Task
         self.id_gen = TaskIdGeneratorInmem()
         # self.next_id = 0

@@ -7,13 +7,9 @@ from fastapi import FastAPI, HTTPException, Response
 
 import datetime as dt
 
-# from logging.config import dictConfig
-# import logging
-# from config import LogConfig
 from config import get_logger
 from pymongo.common import validate_server_api_or_none
 
-# from todoer_api.model import APIResponse
 from todoer_api.model import Task, TodoerInfo
 from todoer_api.data_layer import (
     TaskDatabase,
@@ -23,15 +19,13 @@ from todoer_api.data_layer import (
 )
 from todoer_api import __version__, __service_name__
 
-# dictConfig(LogConfig().dict())
-# logger = logging.getLogger("todoer")
 logger = get_logger("todoer")
 
 
 def get_db() -> TaskDatabase:
     # TODO make this a variable so don't reconnect each time
-    # db_type = "mongo"
-    db_type = "in_memory"
+    db_type = "mongo"
+    # db_type = "in_memory"
     return get_db_con(db_type)
 
 
