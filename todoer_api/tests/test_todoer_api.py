@@ -33,20 +33,15 @@ def task_to_json(task: Task, exclude_fields: list[str] = []):
 
 
 def _post_new_task() -> Task:
-    def _create_test_task() -> Task:
-        # created=dt.datetime.now(),
-        # set a dummy value of id will be auto-generated
-        return Task(
-            id=0,
-            owner="test_user",
-            project="test_project",
-            summary=f"Auto-generated test task",
-            description=f"Description for test task",
-            status="Backlog",
-            assignee="test_user",
-        )
-
-    new_task = _create_test_task()
+    new_task = Task(
+        id=0,
+        owner="test_user",
+        project="test_project",
+        summary=f"Auto-generated test task",
+        description=f"Description for test task",
+        status="Backlog",
+        assignee="test_user",
+    )
     response = client.post(f"/api/v1/tasks", json=new_task.dict())
     assert response.status_code == 201
     return Task(**response.json())
@@ -124,8 +119,8 @@ def test_ping():
     pre_time = dt.datetime.now()
     response = client.get("/api/v1/ping")
     assert response.status_code == 200
-    body = response.json()
-    ping_str = body.get("ping", None)
+    response_body = response.json()
+    ping_str = response_body.get("ping", None)
     assert ping_str is not None
     # "2021-12-19 10:53:51" -> "%Y-%m-%d %H:%M%S"
     post_time = dt.datetime.strptime(ping_str, "%Y-%m-%d %H:%M:%S")
@@ -136,10 +131,10 @@ def test_ping():
 def test_read_info():
     response = client.get("/api/v1/info")
     assert response.status_code == 200
-    body = response.json()
-    assert body["service"] == __service_name__
-    assert body["data_source"] == dl.CONNECTION_TYPE
-    assert body["version"] == __version__
+    response_body = response.json()
+    assert response_body["service"] == __service_name__
+    assert response_body["data_source"] == dl.CONNECTION_TYPE
+    assert response_body["version"] == __version__
 
 
 def test_setup_test():
@@ -201,18 +196,13 @@ def test_update():
     # get/compare task
     get_task = _get_task(rslt_new.id)
     assert _compare_tasks(get_task, rslt_new)
-    logger.info(f"test_update compared new task {rslt_new.id} OK")
 
     # update
     upd_task = rslt_new.copy(deep=True)
     upd_task.description = "modified description"
-    logger.info(f"test_update about to update task {upd_task.id}")
-    logger.info(f"test_update update task {str(upd_task.body())}")
     rslt_upd = _put_update_task(upd_task)
     _compare_tasks(upd_task, rslt_upd)
-    logger.info(f"test_update compared upd task {rslt_new.id} OK")
 
-    logger.info(f"test_update cleanup")
     _cleanup_test(rslt_new.id)
 
 

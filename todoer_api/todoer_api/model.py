@@ -37,19 +37,6 @@ class Task(BaseModel):
             }
         }
 
-    def body(self, include_id=False):
-        """Return a dict representing the JSON that is REST friendly."""
-        # currently just exclude datetime fields
-        exclude_fields = ["created", "updated"]
-        if not include_id:
-            exclude_fields.append("id")
-        json_dict = self.dict()
-        return {
-            key: value
-            for (key, value) in json_dict.items()
-            if key not in exclude_fields
-        }
-
 
 class APIResponse(BaseModel):
     status: str
