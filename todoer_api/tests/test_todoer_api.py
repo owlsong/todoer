@@ -3,9 +3,11 @@ from todoer_api import __version__, __service_name__
 from todoer_api.model import Task
 import todoer_api.data_layer as dl
 from fastapi.testclient import TestClient
-from main import app
+from app.main import app
 import datetime as dt
-from config import get_logger
+
+# from config import get_logger
+from app.core.config import get_logger
 
 
 logger = get_logger("todoer")

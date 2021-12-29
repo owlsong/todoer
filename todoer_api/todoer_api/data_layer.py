@@ -1,7 +1,9 @@
 from .model import Task
 import datetime as dt
 import pymongo
-from config import get_logger
+
+# from app.core.config import get_logger
+from app.core.config import get_logger
 
 logger = get_logger("data layer")
 

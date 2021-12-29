@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException, Response
 
 import datetime as dt
 
-from config import get_logger
+from app.core.config import get_logger
+
 from pymongo.common import validate_server_api_or_none
 
 from todoer_api.model import Task, TodoerInfo
