@@ -1,8 +1,11 @@
 from typing import List, Optional  # Dict,
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException  # , Response
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
 
 # from fastapi import FastAPI, status
-# from fastapi import Request
+from fastapi import Request
+
 # from fastapi.responses import JSONResponse
 
 import datetime as dt
@@ -21,6 +24,8 @@ from todoer_api.data_layer import (
 from todoer_api import __version__, __service_name__
 
 logger = get_logger("todoer")
+BASE_PATH = Path(__file__).resolve().parent
+TEMPLATES = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 
 
 def get_db() -> TaskDatabase:
@@ -31,6 +36,17 @@ def get_db() -> TaskDatabase:
 
 
 app = FastAPI()
+
+
+@app.get("/todoer/v1/tasks", status_code=200)
+def root(request: Request) -> dict:  # 2
+    """
+    GET tasks as html page
+    """
+    return TEMPLATES.TemplateResponse(
+        "index.html",
+        {"request": request, "tasks": get_db().get_all()},
+    )
 
 
 @app.get("/api/v1/ping")
