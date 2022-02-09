@@ -1,8 +1,17 @@
 from pydantic.tools import parse_obj_as
 from todoer_api import __version__, __service_name__
-from todoer_api.model import Task
-import todoer_api.data_layer as dl
+
+# from todoer_api.model import Task
+from app.schemas import (
+    Task,
+    TaskCreate,
+    TaskUpdate,
+    TaskSearchResults,
+)  #  todoer_api.model import Task
+
+# import todoer_api.data_layer as dl
 from fastapi.testclient import TestClient
+from fastapi.encoders import jsonable_encoder
 from app.main import app
 import datetime as dt
 
@@ -28,6 +37,7 @@ def task_to_json(task: Task, exclude_fields: list[str] = []):
     # exclude_fields = ["created", "updated"]
     # if not include_id:
     #     exclude_fields.append("id")
+    # TODO use jsonable_encoder -> converts things like datetime to strs tpo be JSON compatible
     json_dict = task.dict()
     return {
         key: value for (key, value) in json_dict.items() if key not in exclude_fields
@@ -35,16 +45,15 @@ def task_to_json(task: Task, exclude_fields: list[str] = []):
 
 
 def _post_new_task() -> Task:
-    new_task = Task(
-        id=0,
-        owner="test_user",
+    new_task = TaskCreate(
         project="test_project",
         summary=f"Auto-generated test task",
         description=f"Description for test task",
         status="Backlog",
-        assignee="test_user",
+        assignee_id=1,
+        tags="test",
     )
-    response = client.post(f"/api/v1/tasks", json=new_task.dict())
+    response = client.post(f"/api/v1/tasks", json=jsonable_encoder(new_task))
     assert response.status_code == 201
     return Task(**response.json())
 
@@ -59,7 +68,8 @@ def _put_update_task(upd_task: Task):
 
 
 def _compare_tasks(task1: Task, task2: Task):
-    exclude_fields = ["created", "updated"]
+    # exclude_fields = ["created", "updated"]
+    exclude_fields = []
     return task_to_json(task1, exclude_fields) == task_to_json(task2, exclude_fields)
 
 
@@ -67,7 +77,8 @@ def _check_tasks_len(expected_len: int = None):
     # get tasks -> empty
     response = client.get("/api/v1/tasks")
     assert response.status_code == 200
-    num = len(response.json())
+    rslts = TaskSearchResults(**response.json())
+    num = len(rslts.results)
     if expected_len is not None:
         assert num == expected_len
     return num
@@ -88,11 +99,7 @@ def _get_all_tasks():
     # model -> dict     task.dict()
     response = client.get(f"/api/v1/tasks")
     assert response.status_code == 200
-    rslts = []
-    rsp_json = response.json()
-    for tsk in rsp_json:
-        rslts.append(Task(**tsk))
-    return rslts
+    return TaskSearchResults(**response.json()).results
 
 
 def _setup_test():
@@ -105,15 +112,15 @@ def _setup_test():
 def _cleanup_test(task_id: int = None):
     if task_id is None:
         resp_del = client.delete(f"/admin/v1/tasks")
-        pass
+        assert resp_del.status_code == 204
     else:
         resp_del = client.delete(f"/api/v1/tasks/{task_id}")
-    assert resp_del.status_code == 204
+        assert resp_del.status_code == 200
     _check_tasks_len(0)
 
 
 def test_version():
-    assert __version__ == "0.3.0"
+    assert __version__ == "0.4.0"
 
 
 def test_ping():
@@ -135,7 +142,7 @@ def test_read_info():
     assert response.status_code == 200
     response_body = response.json()
     assert response_body["service"] == __service_name__
-    assert response_body["data_source"] == dl.CONNECTION_TYPE
+    # assert response_body["data_source"] == "???"
     assert response_body["version"] == __version__
 
 

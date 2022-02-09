@@ -20,15 +20,27 @@ fi
 export GUNICORN_CONF=${GUNICORN_CONF:-$DEFAULT_GUNICORN_CONF}
 export WORKER_CLASS=${WORKER_CLASS:-"uvicorn.workers.UvicornWorker"}
 
+# echo "--- THC debug - pausing using tail ---"
+# tail -f /dev/null
+
 # If there's a prestart.sh script in the /app directory or other path specified, run it before starting
 PRE_START_PATH=${PRE_START_PATH:-/app/prestart.sh}
 echo "Checking for script in $PRE_START_PATH"
 if [ -f $PRE_START_PATH ] ; then
-    echo "Running script $PRE_START_PATH"
+    # echo "DEFAULT_MODULE_NAME = $DEFAULT_MODULE_NAME"
+    # echo "first the curr dir then find session.py then all init's in app"
+    # echo $PWD
+    # find . -name session.py
+    # find ./app -name __init__.py
+    echo "Running pre-start script $PRE_START_PATH"
+    SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+    cd /app
     . "$PRE_START_PATH"
+    cd "$SCRIPT_DIR"
 else 
     echo "There is no script $PRE_START_PATH"
 fi
 
 # Start Gunicorn
 exec gunicorn -k "$WORKER_CLASS" -c "$GUNICORN_CONF" "$APP_MODULE"
+

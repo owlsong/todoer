@@ -6,6 +6,8 @@ ENV PYTHONFAULTHANDLER=1 \
 
 WORKDIR /app/
 
+# ------------- setup python venv intermediate image
+
 FROM base as builder
 
 ARG poetry_build_arg
@@ -35,8 +37,10 @@ COPY . /app
 
 RUN poetry build && /venv/bin/pip install dist/*.whl
 
+# ------------- setup final image
 FROM base as final
 RUN apk add --no-cache libffi libpq
+RUN apk add --no-cache sqlite
 COPY --from=builder /venv /venv
 COPY . /app
 
@@ -46,6 +50,8 @@ RUN chmod +x /start.sh
 
 RUN mv /app/start-reload.sh /
 RUN chmod +x /start-reload.sh
+
+RUN chmod +x /app/prestart.sh
 
 RUN mv /app/gunicorn_conf.py /
 
@@ -57,6 +63,6 @@ ENV PYTHONPATH=/venv \
 
 # Run the start script, it will check for an /app/prestart.sh script (e.g. for migrations)
 # And then will start Gunicorn with Uvicorn
-CMD ["/start.sh"]
-# CMD ["/start-reload.sh"]
+# CMD ["/start.sh"]
+CMD ["/start-reload.sh"]
 

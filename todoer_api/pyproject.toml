@@ -12,6 +12,9 @@ gunicorn = "^20.1.0"
 pymongo = "^4.0.1"
 pydantic = {extras = ["email", "dotenv"], version = "^1.8.2"}
 Jinja2 = "^3.0.3"
+SQLAlchemy = "^1.4.29"
+alembic = "^1.7.5"
+tenacity = "^8.0.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

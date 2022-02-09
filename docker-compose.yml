@@ -21,7 +21,7 @@ services:
     volumes:
       - mongo_data:/data/db
   todoer-api:
-    build: 
+    build:
       context: ./todoer_api
       args:
         poetry_build_arg: --dev
@@ -30,9 +30,9 @@ services:
     environment:
       - TZ=Australia/Sydney
       - PORT=8000
+      - PYTHONPATH=/app
     volumes:
       - ./todoer_api/:/app:delegated
-
     # env_file:
     #   - .env_local
     # depends_on:
