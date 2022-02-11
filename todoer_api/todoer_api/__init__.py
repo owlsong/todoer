@@ -1,4 +1,6 @@
 # needed for poetry to build
 
-__version__ = "0.4.0"
-__service_name__ = "ToDoer"
+service_version = "0.4.0"
+service_name = "ToDoer"
+data_source = "SQLAlchemy"
+api_version = "1"

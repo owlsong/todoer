@@ -21,3 +21,7 @@ Then on the todoer-api container :
 
 Then check for new files in (to check changesa are OK):
 ./todoer_api/alembic/versions/
+
+## Run tests
+do from cmd line:
+        docker-compose exec todoer-api pytest

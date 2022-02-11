@@ -25,15 +25,13 @@ class TodoerInfo(BaseModel):
     service: str
     data_source: str
     version: str
+    api_version: str
 
 
 class APIResponse(BaseModel):
     status: str
     description: Optional[str] = None
     errors: Optional[List[str]] = None
-
-
-# TODO-high  TaskBase -= project / TaskCreate = Base + project / TaskUpdate = Base
 
 
 class TaskBase(BaseModel):
@@ -51,25 +49,13 @@ class TaskBase(BaseModel):
 class TaskCreate(TaskBase):
     """For creation of a task == TaskBase + submitter_id."""
 
-    # TODO remove copy of fields here - just use pass
-    project: SmlStr
-    summary: MidStr
-    description: Optional[LongStr] = None
-    status: SmlStr
-    assignee_id: Optional[int] = None
-    tags: Optional[MidStr] = None
+    pass  # create == base
 
 
 class TaskUpdate(TaskBase):
     """Things can modify in a task === TaskBase - project."""
 
-    # TODO look at how to remove project from here without copying all fields
-    # TODO should these be all optional???
-    summary: MidStr
-    description: Optional[LongStr] = None
-    status: SmlStr
-    assignee_id: Optional[int] = None
-    tags: Optional[MidStr] = None
+    pass  # for now can update == base (including project)
 
 
 # Properties shared by models stored in DB

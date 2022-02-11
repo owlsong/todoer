@@ -1,5 +1,6 @@
+from typing import Optional
 from pydantic.tools import parse_obj_as
-from todoer_api import __version__, __service_name__
+from todoer_api import service_version, service_name
 
 # from todoer_api.model import Task
 from app.schemas import (
@@ -22,7 +23,7 @@ from app.core.config import get_logger
 logger = get_logger("todoer")
 client = TestClient(app)
 BAD_ID = -123
-BAD_DATA = {"what": "this is a random dict that doe snot match the schema"}
+BAD_DATA = {"what": "this is a random dict that does not match the schema"}
 
 # test plan
 # ---------
@@ -31,7 +32,12 @@ BAD_DATA = {"what": "this is a random dict that doe snot match the schema"}
 # test - setup suite as per EG
 
 
-def task_to_json(task: Task, exclude_fields: list[str] = []):
+def get_route(suffix: str, route_type: Optional[str] = "api") -> str:
+    """The route based o nthe route type such as: api, admin."""
+    return f"/todoer/{route_type}/v1/{suffix}"
+
+
+def task_to_json_deprecated(task: Task, exclude_fields: list[str] = []):
     """Return a dict representing the JSON that is REST friendly."""
     # currently just exclude datetime fields
     # exclude_fields = ["created", "updated"]
@@ -44,8 +50,8 @@ def task_to_json(task: Task, exclude_fields: list[str] = []):
     }
 
 
-def _post_new_task() -> Task:
-    new_task = TaskCreate(
+def _create_new_task_object() -> Task:
+    return TaskCreate(
         project="test_project",
         summary=f"Auto-generated test task",
         description=f"Description for test task",
@@ -53,7 +59,19 @@ def _post_new_task() -> Task:
         assignee_id=1,
         tags="test",
     )
-    response = client.post(f"/api/v1/tasks", json=jsonable_encoder(new_task))
+
+
+def _post_new_task_to_db() -> Task:
+    # new_task = TaskCreate(
+    #     project="test_project",
+    #     summary=f"Auto-generated test task",
+    #     description=f"Description for test task",
+    #     status="Backlog",
+    #     assignee_id=1,
+    #     tags="test",
+    # )
+    new_task = _create_new_task_object()
+    response = client.post(get_route("tasks"), json=jsonable_encoder(new_task))
     assert response.status_code == 201
     return Task(**response.json())
 
@@ -61,7 +79,8 @@ def _post_new_task() -> Task:
 def _put_update_task(upd_task: Task):
     exclude_fields = ["created", "updated"]
     response = client.put(
-        f"/api/v1/tasks/{upd_task.id}", json=task_to_json(upd_task, exclude_fields)
+        get_route(f"tasks/{upd_task.id}"),
+        json=task_to_json_deprecated(upd_task, exclude_fields),
     )
     assert response.status_code == 200
     return Task(**response.json())
@@ -70,12 +89,14 @@ def _put_update_task(upd_task: Task):
 def _compare_tasks(task1: Task, task2: Task):
     # exclude_fields = ["created", "updated"]
     exclude_fields = []
-    return task_to_json(task1, exclude_fields) == task_to_json(task2, exclude_fields)
+    return task_to_json_deprecated(task1, exclude_fields) == task_to_json_deprecated(
+        task2, exclude_fields
+    )
 
 
 def _check_tasks_len(expected_len: int = None):
     # get tasks -> empty
-    response = client.get("/api/v1/tasks")
+    response = client.get(get_route("tasks"))
     assert response.status_code == 200
     rslts = TaskSearchResults(**response.json())
     num = len(rslts.results)
@@ -88,7 +109,7 @@ def _get_task(task_id: int):
     """get task for given task_id"""
     # dict -> model     Task(**task)
     # model -> dict     task.dict()
-    response = client.get(f"/api/v1/tasks/{task_id}")
+    response = client.get(get_route(f"tasks/{task_id}"))
     assert response.status_code == 200
     return Task(**response.json())
 
@@ -97,36 +118,39 @@ def _get_all_tasks():
     """get all tasks"""
     # dict -> model     Task(**task)
     # model -> dict     task.dict()
-    response = client.get(f"/api/v1/tasks")
+    response = client.get(get_route("tasks"))
     assert response.status_code == 200
     return TaskSearchResults(**response.json()).results
 
 
 def _setup_test():
-    resp_del = client.delete(f"/admin/v1/tasks")
+    """Delete all tasks to ensure clean for runnning test."""
+    url = get_route("tasks", "admin")
+    resp_del = client.delete(get_route("tasks", "admin"))
     assert resp_del.status_code == 204
     # initial -> empty
     _check_tasks_len(0)
 
 
 def _cleanup_test(task_id: int = None):
+    """Delete all tasks (or task if id supplied) to ensure clean after test."""
     if task_id is None:
-        resp_del = client.delete(f"/admin/v1/tasks")
+        resp_del = client.delete(get_route("tasks", "admin"))
         assert resp_del.status_code == 204
     else:
-        resp_del = client.delete(f"/api/v1/tasks/{task_id}")
+        resp_del = client.delete(get_route(f"tasks/{task_id}"))
         assert resp_del.status_code == 200
     _check_tasks_len(0)
 
 
 def test_version():
-    assert __version__ == "0.4.0"
+    assert service_version == "0.4.0"
 
 
 def test_ping():
     """Test the simple ping service and check response time."""
     pre_time = dt.datetime.now()
-    response = client.get("/api/v1/ping")
+    response = client.get(get_route("ping"))
     assert response.status_code == 200
     response_body = response.json()
     ping_str = response_body.get("ping", None)
@@ -138,12 +162,12 @@ def test_ping():
 
 
 def test_read_info():
-    response = client.get("/api/v1/info")
+    response = client.get(get_route("info"))
     assert response.status_code == 200
     response_body = response.json()
-    assert response_body["service"] == __service_name__
+    assert response_body["service"] == service_name
     # assert response_body["data_source"] == "???"
-    assert response_body["version"] == __version__
+    assert response_body["version"] == service_version
 
 
 def test_setup_test():
@@ -155,7 +179,7 @@ def test_add_del_empty():
     _setup_test()
 
     # create task
-    new_task = _post_new_task()
+    new_task = _post_new_task_to_db()
     _check_tasks_len(1)
 
     _cleanup_test(new_task.id)
@@ -165,7 +189,7 @@ def test_get():
     _setup_test()
 
     # create task
-    rslt_new = _post_new_task()
+    rslt_new = _post_new_task_to_db()
     _check_tasks_len(1)
 
     # get/compare task
@@ -181,7 +205,7 @@ def test_gets():
     num_tasks = 3
     new_tasks = {}
     for id in range(num_tasks):
-        new_task = _post_new_task()
+        new_task = _post_new_task_to_db()
         new_tasks[new_task.id] = new_task
 
     _check_tasks_len(num_tasks)
@@ -199,7 +223,7 @@ def test_update():
     _setup_test()
 
     # create task
-    rslt_new = _post_new_task()
+    rslt_new = _post_new_task_to_db()
     _check_tasks_len(1)
     logger.info(f"test_update createred task {rslt_new.id}")
     # get/compare task
@@ -216,27 +240,44 @@ def test_update():
 
 
 def test_bad_id_get():
+    _setup_test()
     global BAD_ID
-    response = client.get(f"/api/v1/tasks/{BAD_ID}")
+    response = client.get(get_route(f"tasks/{BAD_ID}"))
+    assert response.status_code == 404
+    missing_id = 1  # setup ensures no tasks exist
+    response = client.get(get_route(f"tasks/{missing_id}"))
     assert response.status_code == 404
 
 
 def test_bad_id_del():
+    _setup_test()
     global BAD_ID
-    response = client.delete(f"/api/v1/tasks/{BAD_ID}")
+    response = client.delete(get_route(f"tasks/{BAD_ID}"))
     assert response.status_code == 404
-
-
-def test_bad_id_update():
-    global BAD_ID
-    response = client.delete(f"/api/v1/tasks/{BAD_ID}")
+    missing_id = 1  # setup ensures no tasks exist
+    response = client.get(get_route(f"tasks/{missing_id}"))
     assert response.status_code == 404
 
 
 def test_bad_data_create():
+    _setup_test()
     global BAD_DATA
-    response = client.post(f"/api/v1/tasks", json=BAD_DATA)
+    response = client.post(get_route(f"tasks"), json=BAD_DATA)
     assert response.status_code == 422
+
+
+def test_bad_id_update():
+    _setup_test()
+    global BAD_ID
+
+    # create task
+    rslt_new = _post_new_task_to_db()
+    _check_tasks_len(1)
+
+    # update with the wrong id
+    response = client.put(get_route(f"tasks/{BAD_ID}"), json=jsonable_encoder(rslt_new))
+    assert response.status_code == 404
+    _cleanup_test()
 
 
 def test_bad_data_update():
@@ -244,11 +285,11 @@ def test_bad_data_update():
     global BAD_DATA
 
     # create task
-    rslt_new = _post_new_task()
+    rslt_new = _post_new_task_to_db()
     _check_tasks_len(1)
 
-    # update
-    response = client.put(f"/api/v1/tasks/{rslt_new.id}", json=BAD_DATA)
+    # update with invalid data
+    response = client.put(get_route(f"tasks/{rslt_new.id}"), json=BAD_DATA)
     assert response.status_code == 422
 
-    _cleanup_test(rslt_new.id)
+    _cleanup_test()

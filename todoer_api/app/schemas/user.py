@@ -1,6 +1,6 @@
 from typing import Optional
-
 from pydantic import BaseModel, EmailStr
+import datetime as dt
 
 
 class UserBase(BaseModel):
@@ -11,8 +11,9 @@ class UserBase(BaseModel):
 
 
 # Properties to receive via API on creation
-# TODO work out what this does (does it make email mandatory)
 class UserCreate(UserBase):
+    """To create a User the email is mandatory."""
+
     email: EmailStr
 
 
@@ -22,7 +23,9 @@ class UserUpdate(UserBase):
 
 
 class UserInDBBase(UserBase):
-    id: Optional[int] = None
+    id: int
+    created: dt.datetime
+    updated: dt.datetime
 
     class Config:
         orm_mode = True

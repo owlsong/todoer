@@ -36,7 +36,7 @@ from app.core.config import get_logger
 #     get_db_con,
 #     CONNECTION_TYPE,
 # )
-from todoer_api import __version__, __service_name__
+from todoer_api import service_version, service_name, data_source, api_version
 
 
 logger = get_logger("todoer")
@@ -54,50 +54,52 @@ TEMPLATES = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 #     return get_db_con(db_type)
 
 
-app = FastAPI(title="TODO API")
-api_router = APIRouter()
+app = FastAPI(title=f"{service_name} API")
+api_prefix = f"/{service_name.lower()}/api/v{api_version}"
+api_router = APIRouter(prefix=api_prefix)
 
 
-@api_router.get("/todoer/v1/tasks", status_code=200)
-def get_tasks_page(
-    request: Request,
-    db: Session = Depends(deps.get_db),
-) -> dict:  # 2
-    """
-    GET tasks as html page
-    """
-    logger.info(f"get tasks html page")
-    tasks = crud.tasks.get_multi(db=db, limit=10)
-    return TEMPLATES.TemplateResponse(
-        "index.html",
-        {"request": request, "tasks": tasks},
-    )
+# @api_router.get("/tasks", status_code=200)
+# def get_tasks_page(
+#     request: Request,
+#     db: Session = Depends(deps.get_db),
+# ) -> dict:  # 2
+#     """
+#     GET tasks as html page
+#     """
+#     logger.info(f"get tasks html page")
+#     tasks = crud.tasks.get_multi(db=db, limit=10)
+#     return TEMPLATES.TemplateResponse(
+#         "index.html",
+#         {"request": request, "tasks": tasks},
+#     )
 
 
-@api_router.get("/api/v1/ping", status_code=200)
+@api_router.get("/ping", status_code=200)
 async def model_ping() -> dict:
     logger.info(f"get ping")
     return {"ping": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
-@api_router.get("/api/v1/info", status_code=200, response_model=TodoerInfo)
+@api_router.get("/info", status_code=200, response_model=TodoerInfo)
 async def model_info():
     logger.info(f"get info")
     return TodoerInfo(
         timestamp=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        service=__service_name__,
-        data_source="not known",
-        version=__version__,
+        service=service_name,
+        data_source=data_source,
+        version=service_version,
+        api_version=api_version,
     )
 
 
-@api_router.get("/api/v1/tests/{test_id}", status_code=200)
+@api_router.get("/tests/{test_id}", status_code=200)
 async def test(test_id: int, qry: Optional[str] = None):
     logger.info(f"in test id={test_id} qry={qry}")
     return {"test_id": test_id, "q": qry}
 
 
-@api_router.get("/api/v1/tasks/{task_id}", status_code=200, response_model=Task)
+@api_router.get("/tasks/{task_id}", status_code=200, response_model=Task)
 async def get_task_by_id(
     *,
     task_id: int,
@@ -115,7 +117,7 @@ async def get_task_by_id(
     return result
 
 
-@api_router.get("/api/v1/tasks", status_code=200, response_model=TaskSearchResults)
+@api_router.get("/tasks", status_code=200, response_model=TaskSearchResults)
 async def get_tasks(
     *,
     keyword: Optional[str] = Query(None, min_length=3, example="shopping"),
@@ -130,7 +132,7 @@ async def get_tasks(
     # TODO seperate search from get all
 
 
-@api_router.post("/api/v1/tasks", status_code=201, response_model=Task)
+@api_router.post("/tasks", status_code=201, response_model=Task)
 async def create_task(
     *, task_in: TaskCreate, db: Session = Depends(deps.get_db)
 ) -> dict:
@@ -141,7 +143,7 @@ async def create_task(
     return task
 
 
-@api_router.put("/api/v1/tasks/{task_id}", response_model=Task)
+@api_router.put("/tasks/{task_id}", response_model=Task)
 async def update_task(
     *, task_id: int, updated_task: TaskUpdate, db: Session = Depends(deps.get_db)
 ):
@@ -153,7 +155,7 @@ async def update_task(
     return updated_task
 
 
-@api_router.delete("/api/v1/tasks/{task_id}", status_code=200, response_model=Task)
+@api_router.delete("/tasks/{task_id}", status_code=200, response_model=Task)
 async def del_task(*, task_id: int, db: Session = Depends(deps.get_db)) -> dict:
     curr_task = crud.task.get(db=db, id=task_id)
     if not curr_task:
@@ -162,9 +164,15 @@ async def del_task(*, task_id: int, db: Session = Depends(deps.get_db)) -> dict:
     return del_task
 
 
-@api_router.delete("/admin/v1/tasks", status_code=204)
+admin_router = APIRouter(
+    prefix=f"/{service_name.lower()}/admin/v{api_version}", tags=["admin"]
+)
+
+
+@admin_router.delete("/tasks", status_code=204)
 async def del_all_tasks(*, db: Session = Depends(deps.get_db)) -> None:
     crud.task.remove_all(db)
 
 
 app.include_router(api_router)
+app.include_router(admin_router)
