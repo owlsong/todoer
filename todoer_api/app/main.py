@@ -3,9 +3,9 @@ from fastapi import (
     FastAPI,
     APIRouter,
     HTTPException,
-    Request,
     Depends,
     Query,
+    status,
 )  # , Response
 from fastapi.templating import Jinja2Templates
 
@@ -21,7 +21,6 @@ from app import crud
 
 # ------------------------------------------------------------------------------
 # >>> extras
-from fastapi import Request
 
 # from fastapi.responses import JSONResponse
 # from fastapi.responses import JSONResponse
@@ -75,13 +74,13 @@ api_router = APIRouter(prefix=api_prefix)
 #     )
 
 
-@api_router.get("/ping", status_code=200)
+@api_router.get("/ping")
 async def model_ping() -> dict:
     logger.info(f"get ping")
     return {"ping": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
-@api_router.get("/info", status_code=200, response_model=TodoerInfo)
+@api_router.get("/info", response_model=TodoerInfo)
 async def model_info():
     logger.info(f"get info")
     return TodoerInfo(
@@ -93,18 +92,18 @@ async def model_info():
     )
 
 
-@api_router.get("/tests/{test_id}", status_code=200)
+@api_router.get("/tests/{test_id}")
 async def test(test_id: int, qry: Optional[str] = None):
     logger.info(f"in test id={test_id} qry={qry}")
     return {"test_id": test_id, "q": qry}
 
 
-@api_router.get("/tasks/{task_id}", status_code=200, response_model=Task)
+@api_router.get("/tasks/{task_id}", response_model=Task)
 async def get_task_by_id(
     *,
     task_id: int,
     db: Session = Depends(deps.get_db),
-) -> Any:
+) -> Task:
     """
     Fetch a single task by ID
     """
@@ -112,12 +111,15 @@ async def get_task_by_id(
     if not result:
         # the exception is raised, not returned - you will get a validation
         # error otherwise.
-        raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task with ID {task_id} not found",
+        )
 
     return result
 
 
-@api_router.get("/tasks", status_code=200, response_model=TaskSearchResults)
+@api_router.get("/tasks", response_model=TaskSearchResults)
 async def get_tasks(
     *,
     keyword: Optional[str] = Query(None, min_length=3, example="shopping"),
@@ -132,7 +134,7 @@ async def get_tasks(
     # TODO seperate search from get all
 
 
-@api_router.post("/tasks", status_code=201, response_model=Task)
+@api_router.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=Task)
 async def create_task(
     *, task_in: TaskCreate, db: Session = Depends(deps.get_db)
 ) -> dict:
@@ -149,17 +151,23 @@ async def update_task(
 ):
     curr_task = crud.task.get(db=db, id=task_id)
     if not curr_task:
-        raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task with ID {task_id} not found",
+        )
 
     updated_task = crud.task.update(db=db, db_obj=curr_task, obj_in=updated_task)
     return updated_task
 
 
-@api_router.delete("/tasks/{task_id}", status_code=200, response_model=Task)
+@api_router.delete("/tasks/{task_id}", response_model=Task)
 async def del_task(*, task_id: int, db: Session = Depends(deps.get_db)) -> dict:
     curr_task = crud.task.get(db=db, id=task_id)
     if not curr_task:
-        raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task with ID {task_id} not found",
+        )
     del_task = crud.task.remove(db, id=task_id)
     return del_task
 
@@ -169,7 +177,7 @@ admin_router = APIRouter(
 )
 
 
-@admin_router.delete("/tasks", status_code=204)
+@admin_router.delete("/tasks", status_code=status.HTTP_204_NO_CONTENT)
 async def del_all_tasks(*, db: Session = Depends(deps.get_db)) -> None:
     crud.task.remove_all(db)
 
