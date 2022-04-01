@@ -1,8 +1,17 @@
 # import imp
+from sqlite3 import connect
 from .model import Task, TaskCreate, PyObjectId, ObjectId, TaskUpdate, TaskPartialUpdate
 import datetime as dt
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from typing import Any, Union
+from motor.motor_asyncio import (
+    AsyncIOMotorClient,
+    AsyncIOMotorDatabase,
+)
+from pymongo import ReturnDocument
+from typing import Any, Union, List
+
+
+from fastapi.encoders import jsonable_encoder
+
 
 # from app.core.config import get_logger
 from app.core.config import get_logger
@@ -13,7 +22,6 @@ logger = get_logger("data layer")
 # DbInMem   CrudInMem(model clases, takes db as arg - then implments db specific cmds but data_model is generic)
 # DbMongo   CrudMongo(model classes)
 # abstract_factory that builds DB + ID_generator + Crud for each model
-# get_db funct that uses USER = os.getenv('DB_TYPE') then calls  abstract_factory(db_type)
 
 
 class DataLayerException(Exception):
@@ -25,18 +33,18 @@ class TaskIdGenerator:
 
     INIT_VALUE = 1
 
-    def get_next_id(self, user: str, project: str) -> int:
+    def get_next_id(self, index: Any) -> int:
         pass
 
 
 class TaskDatabase:
     """Persists tasks internally whilst exposing the CRUD operations on Task objects."""
 
-    def __init__(self) -> None:
-        self.db_type = ""
+    def __init__(self, db_type) -> None:
+        self.db_type = db_type
         self.id_gen = None
 
-    def get(self, task_id: int) -> Task:
+    def get(self, task_id: Any) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
         raise NotImplementedError()
 
@@ -44,7 +52,7 @@ class TaskDatabase:
         """Get all tasks as a list of tasks, empty if none."""
         raise NotImplementedError()
 
-    def add(self, task: Task) -> Task:
+    def add(self, task: TaskCreate) -> Task:
         """Add a new task and return the created task, (fail if task.id already exists).
 
         invariant:  id's are unique
@@ -53,17 +61,26 @@ class TaskDatabase:
         """
         raise NotImplementedError()
 
-    def update(self, task_key: str, task: Task) -> Task:
+    def update(
+        self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
+    ) -> Task:
         """Update a single task with id=task_id return updated task, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def delete(self, task_id: int) -> None:
+    def delete(self, key: str) -> None:
         """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
     def delete_all(self) -> None:
         """Delete all tasks return nothing, (do nothing if no tasks exist)."""
         raise NotImplementedError()
+
+    def drop_database(self) -> None:
+        """Drop the database."""
+        raise NotImplementedError()
+
+
+# region MongoDB
 
 
 class TaskIdGeneratorMogo(TaskIdGenerator):
@@ -75,47 +92,94 @@ class TaskIdGeneratorMogo(TaskIdGenerator):
         # self.db = self.client[self.db_name]
         self.db = kwargs["db"]
         self.id_collection = self.db[self.collection_name]
-        # id indexed by: user: str, project: str
+        # each item of form: { "index": "project-x", "next_id": 23 }
 
-    def get_next_id(self, user: str, project: str) -> int:
-        index_dict = {"user": user, "project": project}
+    async def get_next_id(self, index: str) -> int:
+        rslt = await self.id_collection.find_one_and_update(
+            {"index": index},
+            {"$inc": {"next_id": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return rslt["next_id"]
+
+    async def get_next_id_deprecated(self, index: str) -> int:
+        index_dict = {"index": index}
         id_list = list(self.id_collection.find(index_dict))
-        if len(id_list) == 0:
+
+        indexed_dict = await self.id_collection.find_one(index_dict)
+
+        if indexed_dict is None:
             # no IDs allocated yet -> current=0 next=1
             insert_dict = index_dict
-            insert_dict["id"] = self.INIT_VALUE + 1
+            insert_dict["next_id"] = self.INIT_VALUE + 1
             self.id_collection.insert_one(insert_dict)
             return self.INIT_VALUE
         else:
-            upd_dict = id_list[0]
-            curr_id = upd_dict["id"]
-            upd_dict["id"] = curr_id + 1
-            self.id_collection.replace_one(index_dict, upd_dict)
+            # upd_dict = indexed_dict
+            curr_id = indexed_dict["next_id"]
+            indexed_dict["next_id"] = curr_id + 1
+            self.id_collection.replace_one(index_dict, indexed_dict)
             return curr_id
+
+
+class MongoConnection:
+    def __init__(
+        self, username: str, password: str, host: str, set_client: bool = True
+    ) -> None:
+        self._username = username
+        self._password = password
+        self._host = host
+        self._url = f"mongodb://{self._username}:{self._password}@{self._host}:27017/"
+        self._client: AsyncIOMotorClient = (
+            AsyncIOMotorClient(self._url) if set_client else None
+        )
+
+    def __call__(self) -> AsyncIOMotorClient:
+        return self._client
+
+    def __del__(self) -> None:
+        if self._client is not None:
+            self._client.close()
+
+    @property
+    def url(self) -> str:
+        return self._url
+
+    @property
+    def client(self) -> AsyncIOMotorClient:
+        return self._client
+
+    @client.setter
+    def client(self, newValue: AsyncIOMotorClient) -> None:
+        self._client = newValue
 
 
 class MongoDatabase(TaskDatabase):
     """Stores tasks in a mongo database public API refers to Task objects (internal as dicts)."""
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.username = "localdev"
-        self.password = "localdev"
-        self.host = "mongo"
-        self.url = f"mongodb://{self.username}:{self.password}@{self.host}:27017/"
-        self.db_name = "taskdb"
+    def __init__(self, connection: MongoConnection, db_name: str = "taskdb") -> None:
+        super().__init__("mongo")
+        self.connection = connection
+        self.db_name = db_name
         self.collection_name = "tasks"
-        # mongodb://root:example@mongo:27017/
-        # mongodb://localhost:27017/
-        # TODO-HIGH !!! inject this dependnecy
-        self.client = AsyncIOMotorClient(self.url)
-        self.db = self.client[self.db_name]
+        self.db = None
+        self.tasks = None
+        self.id_gen = None
+        self._setdb()
+
+    def _setdb(self) -> None:
+        self.db = self.connection()[self.db_name]
         self.tasks = self.db[self.collection_name]
         self.id_gen = TaskIdGeneratorMogo(db=self.db)
 
-    def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
+    def __del__(self):
+        del self.connection
+
+    async def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
-        item_list = list(self.tasks.find({"id": task_id}))
+        query = self.tasks.find({"id": task_id})
+        item_list = [Task(**raw_task) async for raw_task in query]
         num = len(item_list)
         if must_be_equal_to is not None and must_be_equal_to != num:
             raise DataLayerException(
@@ -123,58 +187,91 @@ class MongoDatabase(TaskDatabase):
             )
         return item_list
 
-    def get(self, task_id: int) -> Task:
-        # return self._get_by_id(task_id)
-        return Task(**self._get_by_id(task_id, must_be_equal_to=1)[0])
+    async def _get_by_key(self, task_key, must_be_equal_to=None) -> list[dict]:
+        """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
+        query = self.tasks.find({"key": task_key})
+        item_list = [Task(**raw_task) async for raw_task in query]
+        num = len(item_list)
+        if must_be_equal_to is not None and must_be_equal_to != num:
+            raise DataLayerException(
+                f"Error expected {must_be_equal_to} task(s) with ID {task_key} but had {num} occurance(s)"
+            )
+        return item_list
 
-    def get_all(self) -> list[Task]:
-        task_list = self.tasks.find()
-        return [Task(**task) for task in task_list]
+    async def get(self, task_id: Any) -> Task:
+        if isinstance(task_id, str):
+            rslts = await self._get_by_key(task_id, must_be_equal_to=1)
+        else:
+            rslts = await self._get_by_id(task_id, must_be_equal_to=1)
+        return rslts[0]
 
-    def add(self, task: Task) -> Task:
-        # set admin info incl;duiiong the new id
-        task.id = self.id_gen.get_next_id(task.owner, task.project)
-        task.created = dt.datetime.now()
-        task.updated = task.created
+    async def get_all(self, skip=0, limit=10) -> list[Task]:
+        query = self.tasks.find({}, skip=skip, limit=limit)
+        results = [Task(**raw_task) async for raw_task in query]
+        return results
 
-        # ensure task.id not pre-exist
+    async def add(self, task_in: TaskCreate) -> Task:
+        new_id = await self.id_gen.get_next_id(task_in.project)
+        new_data = task_in.get_dict_inc_seq(new_id)
+        # TODO-low set seq, key in pydantic model logic
+        new_task = Task(**new_data)
+        new_key = new_task.key
+
+        # ensure task.key does not pre-exist
         try:
-            self._get_by_id(task.id, 0)
+            await self._get_by_key(new_key, 0)
         except DataLayerException:
             raise DataLayerException(
-                f"Error attempted to add task with ID {task.id} but already exists"
+                f"Error attempted to add task with key {new_key} but already exists"
             )
 
-        result = self.tasks.insert_one(task.dict())
-        logger.info(f"Inserted task id {str(result.inserted_id)}")
-        # return get as the db truncates the datetime so the actual object is different
-        return self.get(task.id)
-
-    def update(self, task_key: str, task: Task) -> Task:
+        result = await self.tasks.insert_one(new_task.dict(by_alias=True))
+        logger.info(f"Inserted task id {str(result.inserted_id)} key {new_key}")
         try:
-            orig_task = self.get(task.id)
-            task.updated = dt.datetime.now()
-            task.created = orig_task.created
+            return await self.get(new_key)
+        except DataLayerException:
+            raise DataLayerException(f"Error failed to add task with key {new_key}")
+
+    async def update(
+        self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
+    ) -> Task:
+        try:
+            stored_task: Task = await self.get(task_key)
         except DataLayerException:
             raise DataLayerException(
-                f"Error attempted to update a task with ID {task.id} but does not exist"
+                f"Error attempted to update a task with key {task_key} but does not exist"
             )
-        self.tasks.replace_one({"id": task.id}, task.dict())
-        return self.get(task.id)
+        updated_task = stored_task.copy(update=task_in.dict(exclude_unset=True))
+        updated_task.updated = dt.datetime.now()
+        await self.tasks.update_one(
+            {"_id": updated_task.id},
+            {"$set": updated_task.dict(by_alias=True, exclude_unset=True)},
+        )
 
-    def delete(self, task_id: int) -> None:
+        return await self.get(task_key)
+
+    async def delete(self, key: str) -> None:
         try:
-            self._get_by_id(task_id, 1)
+            await self._get_by_key(key, 1)
         except DataLayerException:
             raise DataLayerException(
-                f"Error attempted to delete task with ID {task_id} but does not exist"
+                f"Error attempted to delete task with key {key} but does not exist"
             )
-        self.tasks.delete_one({"id": task_id})
+        await self.tasks.delete_one({"key": key})
 
-    def delete_all(self) -> None:
-        self.tasks.delete_many({})
+    async def delete_all(self) -> None:
+        await self.tasks.delete_many({})
+
+    async def drop_database(self) -> None:
+        await self.connection._client.drop_database(self.db_name)
+        self.db = None
+        self._setdb()
+        # await self.delete_all()
 
 
+# endregion
+
+# region InMemory
 class TaskIdGeneratorInmem(TaskIdGenerator):
     def __init__(self) -> None:
         super().__init__()
@@ -195,7 +292,7 @@ class TaskIdGeneratorInmem(TaskIdGenerator):
 
 class InMemDatabase(TaskDatabase):
     def __init__(self):
-        super().__init__()
+        super().__init__("in-memory")
         self.data = {}  # Dict[id] -> Task
         self.data_index = {}  # Dict[key] -> Task
         self.id_gen = TaskIdGeneratorInmem()
@@ -221,7 +318,6 @@ class InMemDatabase(TaskDatabase):
         try:
             if isinstance(id, ObjectId):
                 return self.data[id]
-            # raise DataLayerException("THC tmp")
             return self.data_index[id]
         except KeyError:
             raise DataLayerException(f"Task with seq {id} could not be found")
@@ -230,7 +326,7 @@ class InMemDatabase(TaskDatabase):
         return list(self.data.values())
 
     def add(self, task_in: TaskCreate) -> Task:
-        new_data = task_in.get_full_dict(self.seq_gen.get_next_id(task_in.project))
+        new_data = task_in.get_dict_inc_seq(self.seq_gen.get_next_id(task_in.project))
         # TODO - set seq, key in pydantic model logic
         new_task = Task(**new_data)
         # task should auto create: id, created, updated
@@ -275,26 +371,25 @@ class InMemDatabase(TaskDatabase):
         self.data.clear()
         self.data_index.clear()
 
-
-_DB_CON_FACTORY = {
-    "in_memory": InMemDatabase(),
-    "mongo": MongoDatabase(),
-}
-CONNECTION_TYPE = None
-_DB_CON = None
+    def drop_database(self) -> None:
+        """No op as is a volatile store."""
+        pass
 
 
-def _get_db_con(db_type: str) -> TaskDatabase:
-    # logger.info(f"geting db conn of type {db_type}")
-    global _DB_CON, CONNECTION_TYPE, _DB_CON_FACTORY
-
-    if _DB_CON is None or CONNECTION_TYPE != db_type:
-        CONNECTION_TYPE = db_type
-        _DB_CON = _DB_CON_FACTORY[CONNECTION_TYPE]
-        _DB_CON.db_type = CONNECTION_TYPE
-    return _DB_CON
+# endregion
 
 
-def get_db() -> TaskDatabase:
-    # TODO dynamic config the db type
-    return _get_db_con("in_memory")
+def get_database_types() -> List[str]:
+    return [
+        "mongo",
+        "in-memory",
+    ]
+
+
+def database_factory(db_type: str, **kwargs) -> TaskDatabase:
+    if db_type == "mongo":
+        return MongoDatabase(MongoConnection("localdev", "localdev", "mongo"), **kwargs)
+    elif db_type == "in-memory":
+        return InMemDatabase(**kwargs)
+    else:
+        raise DataLayerException(f"Unknown database type {db_type}")

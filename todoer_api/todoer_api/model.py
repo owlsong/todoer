@@ -46,7 +46,7 @@ class TaskBase(BaseModel):
     # assignee: str
     tags: List[str] = Field(default_factory=list)
 
-    def get_full_dict(self, seq: int) -> dict:
+    def get_dict_inc_seq(self, seq: int) -> dict:
         vals = self.dict()
         vals["seq"] = seq
         vals["key"] = _get_task_key(self.project, seq)
