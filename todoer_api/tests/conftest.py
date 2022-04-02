@@ -12,8 +12,8 @@ from typing import Optional, Any
 
 # region global vars
 
-test_task_db: dl.TaskDatabase = dl.database_factory("mongo", db_name="test_taskdb")
-# test_task_db: dl.TaskDatabase = dl.database_factory("in-memory")
+# test_task_db: dl.TaskDatabase = dl.database_factory("mongo", db_name="test_taskdb")
+test_task_db: dl.TaskDatabase = dl.database_factory("in-memory")
 NUM_INIT_TASKS = 2
 
 
@@ -48,7 +48,6 @@ def compare_models(task1: Any, task2: Any) -> bool:
 # endregion helpers
 
 
-# @pytest.fixture(scope="session")
 @pytest_asyncio.fixture(scope="session")
 def event_loop():
     loop = asyncio.get_event_loop()
@@ -64,7 +63,6 @@ def test_database():
     del test_task_db
 
 
-# @pytest.fixture
 @pytest_asyncio.fixture
 async def test_client():
     app.dependency_overrides[get_database] = get_test_database
@@ -75,7 +73,6 @@ async def test_client():
             yield client
 
 
-# @pytest.fixture(autouse=True, scope="module")
 @pytest_asyncio.fixture(autouse=True, scope="module")
 async def initial_tasks():
     initial_tasks = [new_test_task() for i in range(NUM_INIT_TASKS)]

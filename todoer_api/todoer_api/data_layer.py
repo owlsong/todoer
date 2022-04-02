@@ -44,15 +44,15 @@ class TaskDatabase:
         self.db_type = db_type
         self.id_gen = None
 
-    def get(self, task_id: Any) -> Task:
+    async def get(self, task_id: Any) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
         raise NotImplementedError()
 
-    def get_all(self) -> list[Task]:
+    async def get_all(self, skip=0, limit=10) -> list[Task]:
         """Get all tasks as a list of tasks, empty if none."""
         raise NotImplementedError()
 
-    def add(self, task: TaskCreate) -> Task:
+    async def add(self, task: TaskCreate) -> Task:
         """Add a new task and return the created task, (fail if task.id already exists).
 
         invariant:  id's are unique
@@ -61,21 +61,21 @@ class TaskDatabase:
         """
         raise NotImplementedError()
 
-    def update(
+    async def update(
         self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
     ) -> Task:
         """Update a single task with id=task_id return updated task, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def delete_all(self) -> None:
+    async def delete_all(self) -> None:
         """Delete all tasks return nothing, (do nothing if no tasks exist)."""
         raise NotImplementedError()
 
-    def drop_database(self) -> None:
+    async def drop_database(self) -> None:
         """Drop the database."""
         raise NotImplementedError()
 
@@ -313,7 +313,7 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             return None
 
-    def get(self, id: Any) -> Task:
+    async def get(self, id: Any) -> Task:
         """Gets a task by id(ObjectId) or key(str) and raises Error if does not exist."""
         try:
             if isinstance(id, ObjectId):
@@ -322,10 +322,13 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             raise DataLayerException(f"Task with seq {id} could not be found")
 
-    def get_all(self) -> list[Task]:
-        return list(self.data.values())
+    async def get_all(self, skip=0, limit=10) -> list[Task]:
+        data_items = self.data.items()
+        sorted_data = sorted(data_items)
+        sorted_data = sorted_data[skip : skip + limit]
+        return [task for _, task in sorted_data]
 
-    def add(self, task_in: TaskCreate) -> Task:
+    async def add(self, task_in: TaskCreate) -> Task:
         new_data = task_in.get_dict_inc_seq(self.seq_gen.get_next_id(task_in.project))
         # TODO - set seq, key in pydantic model logic
         new_task = Task(**new_data)
@@ -340,7 +343,7 @@ class InMemDatabase(TaskDatabase):
             )
         return self._get_task_by_index(new_key)
 
-    def update(
+    async def update(
         self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
     ) -> Task:
         stored_task = self._get_task_by_index(task_key)
@@ -357,7 +360,7 @@ class InMemDatabase(TaskDatabase):
 
         return updated_task
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         try:
             # ensure in indexes before delete
             del_task = self.data_index[key]
@@ -367,13 +370,15 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             raise DataLayerException(f"Delete task with key {key} could not be found")
 
-    def delete_all(self) -> None:
+    async def delete_all(self) -> None:
         self.data.clear()
         self.data_index.clear()
 
-    def drop_database(self) -> None:
-        """No op as is a volatile store."""
-        pass
+    async def drop_database(self) -> None:
+        self.data = {}
+        self.data_index = {}
+        self.id_gen = TaskIdGeneratorInmem()
+        self.seq_gen = TaskIdGeneratorInmem()
 
 
 # endregion
