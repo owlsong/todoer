@@ -206,7 +206,8 @@ class MongoDatabase(TaskDatabase):
         return rslts[0]
 
     async def get_all(self, skip=0, limit=10) -> list[Task]:
-        query = self.tasks.find({}, skip=skip, limit=limit)
+        # 1 = ascending, -1 = descending
+        query = self.tasks.find({}, skip=skip, limit=limit).sort({"key": 1})
         results = [Task(**raw_task) async for raw_task in query]
         return results
 
