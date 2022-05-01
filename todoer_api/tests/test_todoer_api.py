@@ -4,9 +4,9 @@ from fastapi import status
 from fastapi.encoders import jsonable_encoder
 import datetime as dt
 from todoer_api import __version__, __service_name__
-from todoer_api import data_layer as dl
-from .conftest import NUM_INIT_TASKS, compare_models, new_test_task  # , test_task_db
-from todoer_api.model import Task, TaskCreate, TaskUpdate, TaskPartialUpdate
+from app.model import data_layer as dl
+from .conftest import NUM_INIT_TASKS, compare_models, new_test_task
+from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 import logging
 from typing import Union
 

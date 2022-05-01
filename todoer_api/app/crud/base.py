@@ -12,7 +12,7 @@ from pydantic import BaseModel
 # from sqlalchemy.orm import Session
 # this is the sqlalchemy base class - not needed
 # from app.db.base_class import Base
-from todoer_api.data_layer import MongoConnection
+from app.model.data_layer import MongoConnection
 
 # ModelType = TypeVar("ModelType", bound=Base)
 ModelType = TypeVar("ModelType", bound=BaseModel)

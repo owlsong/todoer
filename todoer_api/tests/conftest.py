@@ -3,8 +3,8 @@ import httpx
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from app.main import app, get_database
-from todoer_api.model import TaskCreate
-from todoer_api import data_layer as dl
+from app.model.task import TaskCreate
+from app.model import data_layer as dl
 from typing import Optional, Any
 
 # region global vars

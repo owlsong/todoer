@@ -1,6 +1,13 @@
 # import imp
-from sqlite3 import connect
-from .model import Task, TaskCreate, PyObjectId, ObjectId, TaskUpdate, TaskPartialUpdate
+# from sqlite3 import connect
+from .base import ObjectId
+from .task import (
+    Task,
+    TaskPartialUpdate,
+    TaskUpdate,
+    TaskCreate,
+    Task,
+)
 import datetime as dt
 from motor.motor_asyncio import (
     AsyncIOMotorClient,

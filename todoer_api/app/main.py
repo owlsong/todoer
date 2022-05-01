@@ -4,27 +4,18 @@ from fastapi import FastAPI, HTTPException, Depends, Query, status
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from fastapi import Request  # , Response
-
-# from fastapi.responses import JSONResponse
-# from pymongo.common import validate_server_api_or_none
-
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-
-
 import datetime as dt
 
 from app.core.config import get_logger
-
-
-from todoer_api.model import (
+from app.model.todoerinfo import TodoerInfo
+from app.model.task import (
     Task,
-    TodoerInfo,
     TaskCreate,
     TaskUpdate,
     TaskPartialUpdate,
-    ObjectId,
 )
-from todoer_api.data_layer import (
+from app.model.data_layer import (
     TaskDatabase,
     DataLayerException,
     database_factory,
