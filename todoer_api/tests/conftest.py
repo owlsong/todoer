@@ -3,17 +3,13 @@ import httpx
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from app.main import app, get_database
-from todoer_api.model import (
-    TaskCreate,
-)  # Task, TodoerInfo, TaskUpdate, TaskPartialUpdate, ObjectId
-import pytest
-import todoer_api.data_layer as dl
+from todoer_api.model import TaskCreate
+from todoer_api import data_layer as dl
 from typing import Optional, Any
 
 # region global vars
 
-# test_task_db: dl.TaskDatabase = dl.database_factory("mongo", db_name="test_taskdb")
-test_task_db: dl.TaskDatabase = dl.database_factory("in-memory")
+test_task_db: dl.TaskDatabase = dl.database_factory("mongo", db_name="test_taskdb")
 NUM_INIT_TASKS = 2
 
 

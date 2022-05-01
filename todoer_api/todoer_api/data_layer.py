@@ -4,7 +4,7 @@ from .model import Task, TaskCreate, PyObjectId, ObjectId, TaskUpdate, TaskParti
 import datetime as dt
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
-    AsyncIOMotorDatabase,
+    AsyncIOMotorCollection,
 )
 from pymongo import ReturnDocument
 from typing import Any, Union, List
@@ -125,11 +125,19 @@ class TaskIdGeneratorMogo(TaskIdGenerator):
 
 class MongoConnection:
     def __init__(
-        self, username: str, password: str, host: str, set_client: bool = True
+        self,
+        username: str,
+        password: str,
+        host: str,
+        set_client: bool = True,
+        db_name: str = None,
+        collection_name: str = None,
     ) -> None:
         self._username = username
         self._password = password
         self._host = host
+        self.db_name = db_name
+        self.collection_name = collection_name
         self._url = f"mongodb://{self._username}:{self._password}@{self._host}:27017/"
         self._client: AsyncIOMotorClient = (
             AsyncIOMotorClient(self._url) if set_client else None
@@ -141,6 +149,9 @@ class MongoConnection:
     def __del__(self) -> None:
         if self._client is not None:
             self._client.close()
+
+    def get_collection(self) -> AsyncIOMotorCollection:
+        return self.client[self.db_name][self.collection]
 
     @property
     def url(self) -> str:
@@ -207,7 +218,7 @@ class MongoDatabase(TaskDatabase):
 
     async def get_all(self, skip=0, limit=10) -> list[Task]:
         # 1 = ascending, -1 = descending
-        query = self.tasks.find({}, skip=skip, limit=limit).sort({"key": 1})
+        query = self.tasks.find({}, skip=skip, limit=limit).sort("key", 1)
         results = [Task(**raw_task) async for raw_task in query]
         return results
 
