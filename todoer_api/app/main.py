@@ -15,7 +15,7 @@ from app.model.task import (
     TaskUpdate,
     TaskPartialUpdate,
 )
-from app.model.data_layer import (
+from app.data_layer.database import (
     TaskDatabase,
     DataLayerException,
     database_factory,

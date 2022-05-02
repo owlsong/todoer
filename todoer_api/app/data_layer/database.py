@@ -1,7 +1,7 @@
 # import imp
 # from sqlite3 import connect
-from .base import ObjectId
-from .task import (
+from app.model.base import ObjectId
+from app.model.task import (
     Task,
     TaskPartialUpdate,
     TaskUpdate,

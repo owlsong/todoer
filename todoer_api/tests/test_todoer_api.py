@@ -4,7 +4,7 @@ from fastapi import status
 from fastapi.encoders import jsonable_encoder
 import datetime as dt
 from todoer_api import __version__, __service_name__
-from app.model import data_layer as dl
+from app.data_layer import database as db
 from .conftest import NUM_INIT_TASKS, compare_models, new_test_task
 from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 import logging
@@ -34,7 +34,7 @@ class TestInfo:
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert response_body["service"] == __service_name__
-        assert response_body["data_source"] in dl.get_database_types()
+        assert response_body["data_source"] in db.get_database_types()
         assert response_body["version"] == __version__
 
 
@@ -43,11 +43,11 @@ class TestTasks:
     BAD_KEY = "bad_id"
 
     async def test_get_not_existing(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         # confirm not in db
         bad_key = self.BAD_KEY
-        with pytest.raises(dl.DataLayerException):
+        with pytest.raises(db.DataLayerException):
             await test_database.get(bad_key)
         # now check for correct REST code
         response = await test_client.get(f"/api/v1/tasks/{bad_key}")
@@ -60,7 +60,7 @@ class TestTasks:
         assert len(response_body) == NUM_INIT_TASKS
 
     async def test_init_tasks_get_all(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         response = await test_client.get("/api/v1/tasks")
         assert response.status_code == status.HTTP_200_OK
@@ -80,7 +80,7 @@ class TestTasks:
         return Task(**(response_body[0]))
 
     async def test_init_tasks_get(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         task_orig = await self.get_first_task(test_client)
         task_key = task_orig.key
@@ -94,7 +94,7 @@ class TestTasks:
         assert compare_models(task_db, task_get)
 
     async def test_task_add_del(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         # add task
         new_task_in = new_test_task(desc="new task")
@@ -135,7 +135,7 @@ class TestTasks:
         return response
 
     async def test_task_update(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         # get existing task
         task_orig = await self.get_first_task(test_client)
@@ -160,7 +160,7 @@ class TestTasks:
         assert compare_models(task_db, task_upd_rsp)
 
     async def test_task_update_bad_id(
-        self, test_client: httpx.AsyncClient, test_database: dl.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         # get existing task
         task_orig = await self.get_first_task(test_client)

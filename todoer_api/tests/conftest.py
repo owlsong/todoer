@@ -4,16 +4,16 @@ import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from app.main import app, get_database
 from app.model.task import TaskCreate
-from app.model import data_layer as dl
+from app.data_layer import database as db
 from typing import Optional, Any
 
 # region global vars
 
-test_task_db: dl.TaskDatabase = dl.database_factory("mongo", db_name="test_taskdb")
+test_task_db: db.TaskDatabase = db.database_factory("mongo", db_name="test_taskdb")
 NUM_INIT_TASKS = 2
 
 
-async def get_test_database() -> dl.TaskDatabase:
+async def get_test_database() -> db.TaskDatabase:
     global test_task_db
     return test_task_db
 
