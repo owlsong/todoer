@@ -27,7 +27,7 @@ class UserUpdate(UserBase):
 
 
 class UserCreate(UserBase):
-    project: str
+    pass
 
 
 class UserDB(UserCreate, MongoBaseModel):
