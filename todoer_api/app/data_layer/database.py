@@ -1,27 +1,20 @@
 # import imp
 # from sqlite3 import connect
-from app.model.base import ObjectId
-from app.model.task import (
-    Task,
-    TaskPartialUpdate,
-    TaskUpdate,
-    TaskCreate,
-    Task,
-)
 import datetime as dt
+from typing import Any, List, Union
 
+# from app.core.config import get_logger
 # from motor.motor_asyncio import (
 #     AsyncIOMotorClient,
 #     AsyncIOMotorCollection,
 # )
+# from fastapi.encoders import jsonable_encoder
 from pymongo import ReturnDocument
-from typing import Any, Union, List
-from fastapi.encoders import jsonable_encoder
-
-
-# from app.core.config import get_logger
 from app.core.config import get_logger
+from app.model.base import ObjectId
+from app.model.task import Task, TaskCreate, TaskPartialUpdate, TaskUpdate
 from .mongo_connection import MongoConnection
+from .dl_exception import DataLayerException
 
 logger = get_logger("data layer")
 
@@ -29,10 +22,6 @@ logger = get_logger("data layer")
 # DbInMem   CrudInMem(model clases, takes db as arg - then implments db specific cmds but data_model is generic)
 # DbMongo   CrudMongo(model classes)
 # abstract_factory that builds DB + ID_generator + Crud for each model
-
-
-class DataLayerException(Exception):
-    pass
 
 
 class TaskIdGenerator:

@@ -15,9 +15,9 @@ from app.model.task import (
     TaskUpdate,
     TaskPartialUpdate,
 )
+from app.data_layer.dl_exception import DataLayerException
 from app.data_layer.database import (
     TaskDatabase,
-    DataLayerException,
     database_factory,
 )
 from todoer_api import __version__, __service_name__
