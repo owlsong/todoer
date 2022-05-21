@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import datetime as dt
 
 from app.core.config import get_logger
+from app.model.base import ObjectId
 from app.model.todoerinfo import TodoerInfo
 from app.model.task import (
     Task,
@@ -21,6 +22,8 @@ from app.data_layer.database import (
     database_factory,
 )
 from todoer_api import __version__, __service_name__
+from fastapi.encoders import jsonable_encoder
+from starlette.responses import JSONResponse
 
 logger = get_logger("todoer")
 BASE_PATH = Path(__file__).resolve().parent
@@ -62,7 +65,18 @@ async def get_task_or_404(task_key: str, database=Depends(get_database)) -> Task
         raise HTTPException(status_code=404, detail=f"Task {task_key} not found")
 
 
+async def get_task_id_or_404(task_id: str, database=Depends(get_database)) -> Task:
+    try:
+
+        return await database.get(ObjectId(task_id))
+    except DataLayerException:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+
 # ------------------------------------------------------------------------------
+
+# region non-data
+
 
 # database_builder=Depends(build_database)
 @app.on_event("startup")
@@ -117,6 +131,11 @@ async def test(test_id: int, qry: Optional[str] = None):
     return {"test_id": test_id, "q": qry}
 
 
+# endregion
+
+# region tasks
+
+
 @app.get("/todoer/api/v1/tasks")
 async def get_tasks(
     pagination: Tuple[int, int] = Depends(pagination), database=Depends(get_database)
@@ -125,7 +144,21 @@ async def get_tasks(
 
 
 @app.get("/todoer/api/v1/tasks/{task_key}", response_model=Task)
-async def get_task_id(task: Task = Depends(get_task_or_404)) -> Task:
+async def get_task_key(task: Task = Depends(get_task_or_404)) -> Task:
+    # to return with id iso _id do the follwing but breaks tests
+    # as rebuild from dict assume _id is present
+    # retrun a JSONResponse to avoid casting back to Task which uses _id
+    # tsk_dict = jsonable_encoder(task, by_alias=False)
+    # return JSONResponse(content=tsk_dict)
+
+    # to return with _id
+    logger.info(f"get task by key {task.key} id = {task.id}")
+    return task
+
+
+@app.get("/todoer/api/v1/tasks/id/{task_id}", response_model=Task)
+async def get_task_id(task: Task = Depends(get_task_id_or_404)) -> Task:
+    logger.info(f"get task by ID {task.id}")
     return task
 
 
@@ -180,3 +213,6 @@ async def del_all_task(database=Depends(get_database)):
         await database.delete_all()
     except DataLayerException:
         raise HTTPException(status_code=404, detail=f"Failed to delete all tasks")
+
+
+# endregion

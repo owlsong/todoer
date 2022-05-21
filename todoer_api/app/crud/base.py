@@ -20,7 +20,9 @@ CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
-class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+class CRUDMongoBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    """Generic class to manage data obejct of type ModelType, with special types for create/update."""
+
     def __init__(self, model: Type[ModelType]):
         """
         CRUD object with default methods to Create, Read, Update, Delete (CRUD).
@@ -133,8 +135,6 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db_obj: ModelType,
         obj_in: Union[UpdateSchemaType, Dict[str, Any]]
     ) -> ModelType:
-        # CHECK: extra = db, sort_field, sort_ascending
-
         obj_data = jsonable_encoder(db_obj)
         # convert obj_in -> dict as update_data
         if isinstance(obj_in, dict):

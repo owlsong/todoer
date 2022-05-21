@@ -94,7 +94,7 @@ class MongoDatabase(TaskDatabase):
 
     async def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
-        query = self.tasks.find({"id": task_id})
+        query = self.tasks.find({"_id": task_id})
         item_list = [Task(**raw_task) async for raw_task in query]
         num = len(item_list)
         if must_be_equal_to is not None and must_be_equal_to != num:
