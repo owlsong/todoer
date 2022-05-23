@@ -2,6 +2,8 @@
 # from sqlite3 import connect
 import datetime as dt
 from typing import Any, List, Union
+from app.data_layer.data_obj_mgr import DataObejctManager
+from black import TRANSFORMED_MAGICS
 
 # from app.core.config import get_logger
 # from motor.motor_asyncio import (
@@ -13,7 +15,7 @@ from pymongo import ReturnDocument
 from app.core.config import get_logger
 from app.model.base import ObjectId
 from app.model.task import Task, TaskCreate, TaskPartialUpdate, TaskUpdate
-from .mongo_connection import MongoConnection
+from .mongo_connection import MongoConnection, MongoCollection
 from .dl_exception import DataLayerException
 from .id_generator import TaskIdGeneratorInmem, TaskIdGeneratorMogo
 
@@ -28,9 +30,9 @@ logger = get_logger("data layer")
 class TaskDatabase:
     """Persists tasks internally whilst exposing the CRUD operations on Task objects."""
 
-    def __init__(self, db_type) -> None:
+    def __init__(self, db_type, id_gen) -> None:
         self.db_type = db_type
-        self.id_gen = None
+        self.id_gen = id_gen
 
     async def get(self, task_id: Any) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
@@ -74,23 +76,15 @@ class TaskDatabase:
 class MongoDatabase(TaskDatabase):
     """Stores tasks in a mongo database public API refers to Task objects (internal as dicts)."""
 
-    def __init__(self, connection: MongoConnection, db_name: str = "taskdb") -> None:
-        super().__init__("mongo")
-        self.connection = connection
-        self.db_name = db_name
-        self.collection_name = "tasks"
-        self.db = None
-        self.tasks = None
-        self.id_gen = None
-        self._setdb()
-
-    def _setdb(self) -> None:
-        self.db = self.connection()[self.db_name]
-        self.tasks = self.db[self.collection_name]
-        self.id_gen = TaskIdGeneratorMogo(db=self.db)
+    def __init__(
+        self, task_collection: MongoCollection, id_gen: TaskIdGeneratorMogo
+    ) -> None:
+        super().__init__("mongo", id_gen)
+        self._task_collection = task_collection
+        self.tasks = self._task_collection.get_collection()
 
     def __del__(self):
-        del self.connection
+        del self._task_collection
 
     async def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
@@ -180,10 +174,10 @@ class MongoDatabase(TaskDatabase):
         await self.tasks.delete_many({})
 
     async def drop_database(self) -> None:
-        await self.connection._client.drop_database(self.db_name)
-        self.db = None
-        self._setdb()
-        # await self.delete_all()
+        await self._task_collection.drop_db()
+        # await self._task_collection().drop_database(self.db_name)
+        # self.db = None
+        # self.tasks = self._task_collection.get_collection()
 
 
 # endregion
@@ -291,8 +285,24 @@ def get_database_types() -> List[str]:
 
 
 def database_factory(db_type: str, **kwargs) -> TaskDatabase:
+    db_name = kwargs.get("db_name", "taskdb")
+    task_collection_name = kwargs.get("task_collection_name", "tasks")
+    id_db_name = kwargs.get("id_db_name", "taskdb_id")
+    id_collection_name = kwargs.get("id_collection_name", "tasks")
     if db_type == "mongo":
-        return MongoDatabase(MongoConnection("localdev", "localdev", "mongo"), **kwargs)
+        logger.info(
+            f"DB-factory type={db_type} DB={db_name} Table={task_collection_name}"
+        )
+        mongo_conn = MongoConnection("localdev", "localdev", "mongo")
+        mongo_coll = MongoCollection(mongo_conn, db_name, task_collection_name)
+        mongo_id_coll = MongoCollection(mongo_conn, id_db_name, id_collection_name)
+        return MongoDatabase(mongo_coll, TaskIdGeneratorMogo(mongo_id_coll))
+    elif db_type == "mongo-data-obj-mgr":
+        mongo_conn = MongoCollection("localdev", "localdev", "mongo")
+        mongo_coll = MongoCollection(mongo_coll, db_name, task_collection_name)
+        mongo_id_coll = MongoCollection(mongo_coll, id_db_name, id_collection_name)
+        id_gen = TaskIdGeneratorMogo(mongo_id_coll)
+        return DataObejctManager(mongo_conn, id_gen)
     elif db_type == "in-memory":
         return InMemDatabase(**kwargs)
     else:

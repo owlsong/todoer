@@ -1,2 +1,2 @@
-from .crud_task import task
-from .crud_user import user
+from .crud_task import Task  # , task
+from .crud_user import User  # , user

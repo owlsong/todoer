@@ -21,6 +21,7 @@ from app.data_layer.database import (
     TaskDatabase,
     database_factory,
 )
+from app.data_layer.data_obj_mgr import DataObejctManager, CRUDTask, CRUDUser
 from todoer_api import __version__, __service_name__
 from fastapi.encoders import jsonable_encoder
 from starlette.responses import JSONResponse

@@ -9,7 +9,9 @@ from typing import Optional, Any
 
 # region global vars
 
-test_task_db: db.TaskDatabase = db.database_factory("mongo", db_name="test_taskdb")
+test_task_db: db.TaskDatabase = db.database_factory(
+    "mongo", db_name="test_taskdb", id_db_name="test_taskdb_id"
+)
 NUM_INIT_TASKS = 2
 
 
