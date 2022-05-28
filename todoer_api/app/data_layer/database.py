@@ -2,7 +2,7 @@
 # from sqlite3 import connect
 import datetime as dt
 from typing import Any, List, Union
-from app.data_layer.data_obj_mgr import DataObejctManager
+from app.data_layer.data_obj_mgr import DataObjectManager
 from black import TRANSFORMED_MAGICS
 
 # from app.core.config import get_logger
@@ -11,7 +11,7 @@ from black import TRANSFORMED_MAGICS
 #     AsyncIOMotorCollection,
 # )
 # from fastapi.encoders import jsonable_encoder
-from pymongo import ReturnDocument
+# from pymongo import ReturnDocument
 from app.core.config import get_logger
 from app.model.base import ObjectId
 from app.model.task import Task, TaskCreate, TaskPartialUpdate, TaskUpdate
@@ -289,20 +289,18 @@ def database_factory(db_type: str, **kwargs) -> TaskDatabase:
     task_collection_name = kwargs.get("task_collection_name", "tasks")
     id_db_name = kwargs.get("id_db_name", "taskdb_id")
     id_collection_name = kwargs.get("id_collection_name", "tasks")
+    logger.info(f"DB-factory type={db_type} DB={db_name} Table={task_collection_name}")
     if db_type == "mongo":
-        logger.info(
-            f"DB-factory type={db_type} DB={db_name} Table={task_collection_name}"
-        )
         mongo_conn = MongoConnection("localdev", "localdev", "mongo")
         mongo_coll = MongoCollection(mongo_conn, db_name, task_collection_name)
         mongo_id_coll = MongoCollection(mongo_conn, id_db_name, id_collection_name)
         return MongoDatabase(mongo_coll, TaskIdGeneratorMogo(mongo_id_coll))
     elif db_type == "mongo-data-obj-mgr":
-        mongo_conn = MongoCollection("localdev", "localdev", "mongo")
-        mongo_coll = MongoCollection(mongo_coll, db_name, task_collection_name)
-        mongo_id_coll = MongoCollection(mongo_coll, id_db_name, id_collection_name)
+        mongo_conn = MongoConnection("localdev", "localdev", "mongo")
+        mongo_coll = MongoCollection(mongo_conn, db_name, task_collection_name)
+        mongo_id_coll = MongoCollection(mongo_conn, id_db_name, id_collection_name)
         id_gen = TaskIdGeneratorMogo(mongo_id_coll)
-        return DataObejctManager(mongo_conn, id_gen)
+        return DataObjectManager(mongo_coll, id_gen)
     elif db_type == "in-memory":
         return InMemDatabase(**kwargs)
     else:
