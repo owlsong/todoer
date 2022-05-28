@@ -11,6 +11,10 @@ import logging
 from typing import Union
 
 
+def get_url(partial_url, api_ver=1) -> str:
+    return f"/api/v{api_ver}/{partial_url}"
+
+
 @pytest.mark.asyncio
 class TestInfo:
     async def test_version(self, caplog):
@@ -18,7 +22,7 @@ class TestInfo:
 
     async def test_ping(self, test_client: httpx.AsyncClient):
         pre_time = dt.datetime.now()
-        response = await test_client.get("/api/v1/ping")
+        response = await test_client.get(get_url("ping"))
         assert response.status_code == status.HTTP_200_OK
 
         response_body = response.json()
@@ -30,7 +34,7 @@ class TestInfo:
         assert dur_secs < 0.5
 
     async def test_read_info(self, test_client: httpx.AsyncClient):
-        response = await test_client.get("/api/v1/info")
+        response = await test_client.get(get_url("info"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert response_body["service"] == __service_name__
@@ -50,19 +54,22 @@ class TestTasks:
         with pytest.raises(db.DataLayerException):
             await test_database.get(bad_key)
         # now check for correct REST code
-        response = await test_client.get(f"/api/v1/tasks/{bad_key}")
+        response = await test_client.get(get_url(f"tasks/{bad_key}"))
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_init_num(self, test_client: httpx.AsyncClient, test_database):
-        response = await test_client.get("/api/v1/tasks")
+        response = await test_client.get(get_url("tasks"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert len(response_body) == NUM_INIT_TASKS
 
+    # class XxTestTasks:
+    #     BAD_KEY = "bad_id"
+
     async def test_init_tasks_get_all(
         self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
-        response = await test_client.get("/api/v1/tasks")
+        response = await test_client.get(get_url("tasks"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
 
@@ -73,7 +80,7 @@ class TestTasks:
 
     async def get_first_task(self, test_client: httpx.AsyncClient):
         # get 1st task from get all
-        response = await test_client.get("/api/v1/tasks")
+        response = await test_client.get(get_url("tasks"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert len(response_body) > 0
@@ -86,7 +93,7 @@ class TestTasks:
         task_key = task_orig.key
 
         # get specific task and db - compare
-        response = await test_client.get(f"/api/v1/tasks/{task_key}")
+        response = await test_client.get(get_url(f"tasks/{task_key}"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         task_get = Task(**response_body)
@@ -99,7 +106,7 @@ class TestTasks:
         # add task
         new_task_in = new_test_task(desc="new task")
         pay_load = jsonable_encoder(new_task_in)
-        response = await test_client.post("/api/v1/tasks", json=pay_load)
+        response = await test_client.post(get_url("tasks"), json=pay_load)
         assert response.status_code == status.HTTP_201_CREATED
 
         # get task from response and DB - compare
@@ -109,17 +116,17 @@ class TestTasks:
         assert compare_models(task, task_db)
 
         # delete new task
-        response = await test_client.delete(f"/api/v1/tasks/{task.key}")
+        response = await test_client.delete(get_url(f"tasks/{task.key}"))
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
     async def test_task_add_bad_task(self, test_client: httpx.AsyncClient):
         bad_task_in = {"project bad name": "this wont work"}
-        response = await test_client.post("/api/v1/tasks", json=bad_task_in)
+        response = await test_client.post(get_url("tasks"), json=bad_task_in)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     async def test_task_del_bad_task(self, test_client: httpx.AsyncClient):
         bad_key = self.BAD_KEY
-        response = await test_client.delete(f"/api/v1/tasks/{bad_key}")
+        response = await test_client.delete(get_url(f"tasks/{bad_key}"))
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     async def task_update(
@@ -129,7 +136,7 @@ class TestTasks:
         task_in: Union[TaskUpdate, TaskPartialUpdate],
     ):
         response = await test_client.put(
-            f"/api/v1/tasks/{task_key}", json=jsonable_encoder(task_in)
+            get_url(f"tasks/{task_key}"), json=jsonable_encoder(task_in)
         )
         assert response.status_code == status.HTTP_200_OK
         return response
@@ -169,7 +176,7 @@ class TestTasks:
         task_updated = task_orig.copy()
         task_updated.status = "Updated"
         response = await test_client.put(
-            f"/api/v1/tasks/{self.BAD_KEY}", json=jsonable_encoder(task_updated)
+            get_url(f"tasks/{self.BAD_KEY}"), json=jsonable_encoder(task_updated)
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -179,6 +186,6 @@ class TestTasks:
 
         bad_task_in = {"project bad name": "this wont work"}
         response = await test_client.put(
-            f"/api/v1/tasks/{task_orig.key}", json=bad_task_in
+            get_url(f"tasks/{task_orig.key}"), json=bad_task_in
         )
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

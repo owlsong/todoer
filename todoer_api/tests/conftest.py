@@ -2,16 +2,21 @@ import asyncio
 import httpx
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
-from app.main import app, get_database
+from app.main import app, get_database_v0
 from app.model.task import TaskCreate
 from app.data_layer import database as db
 from typing import Optional, Any
+from app.data_layer import data_obj_mgr as dom
 
 # region global vars
 
 test_task_db: db.TaskDatabase = db.database_factory(
     "mongo", db_name="test_taskdb", id_db_name="test_taskdb_id"
 )
+test_object_db: dom.DataObjectManager = db.database_factory(
+    "mongo-data-obj-mgr", db_name="test_taskdb", id_db_name="test_taskdb_id"
+)
+
 NUM_INIT_TASKS = 2
 
 
@@ -63,7 +68,7 @@ def test_database():
 
 @pytest_asyncio.fixture
 async def test_client():
-    app.dependency_overrides[get_database] = get_test_database
+    app.dependency_overrides[get_database_v0] = get_test_database
     async with LifespanManager(app):
         async with httpx.AsyncClient(
             app=app, base_url="http://127.0.0.1:8000/todoer"

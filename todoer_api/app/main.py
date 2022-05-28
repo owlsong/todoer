@@ -48,7 +48,7 @@ object_db: DataObjectManager = None
 #     return database_factory("mongo")
 
 
-async def get_database() -> TaskDatabase:
+async def get_database_v0() -> TaskDatabase:
     # !!! for some reason when trying to saccess the DB via the data layer
     # it creates an error: attached to a different loop
     # don't know why left it to a local variable in main
@@ -75,7 +75,7 @@ def pagination_dict(
     return {"skip": skip, "limit": capped_limit}
 
 
-async def get_task_or_404(task_key: str, database=Depends(get_database)) -> Task:
+async def get_task_or_404_v0(task_key: str, database=Depends(get_database_v0)) -> Task:
     try:
         return await database.get(task_key)
     except DataLayerException:
@@ -90,7 +90,9 @@ async def get_task_or_404_v2(task_key: str, database=Depends(get_database_v2)) -
     return task
 
 
-async def get_task_id_or_404(task_id: str, database=Depends(get_database)) -> Task:
+async def get_task_id_or_404_v0(
+    task_id: str, database=Depends(get_database_v0)
+) -> Task:
     try:
         return await database.get(ObjectId(task_id))
     except DataLayerException:
@@ -132,7 +134,7 @@ async def shutdown():
 @app.get("/todoer/v1/tasks", status_code=200)
 async def root(
     request: Request,
-    database=Depends(get_database),
+    database=Depends(get_database_v0),
     pagination: Tuple[int, int] = Depends(pagination),
 ) -> dict:  # 2
     """
@@ -151,7 +153,7 @@ async def model_ping():
 
 
 @app.get("/todoer/api/v1/info", response_model=TodoerInfo)
-async def model_info(database=Depends(get_database)) -> TodoerInfo:
+async def model_info(database=Depends(get_database_v0)) -> TodoerInfo:
     logger.info(f"get info")
     return TodoerInfo(
         timestamp=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -178,7 +180,7 @@ async def test(test_id: int, qry: Optional[str] = None):
 @app.get("/todoer/api/v1/tasks")
 async def get_tasks(
     pagination: Dict[str, int] = Depends(pagination_dict),
-    database=Depends(get_database),
+    database=Depends(get_database_v0),
 ) -> List[Task]:
     return await database.get_all(**pagination)
 
@@ -193,7 +195,7 @@ async def get_tasks_v2(
 
 
 @app.get("/todoer/api/v1/tasks/{task_key}", response_model=Task)
-async def get_task_key(task: Task = Depends(get_task_or_404)) -> Task:
+async def get_task_key(task: Task = Depends(get_task_or_404_v0)) -> Task:
     # to return with id iso _id do the follwing but breaks tests
     # as rebuild from dict assume _id is present
     # retrun a JSONResponse to avoid casting back to Task which uses _id
@@ -217,7 +219,7 @@ async def get_task_key_v2(task: Task = Depends(get_task_or_404_v2)) -> Task:
 
 
 @app.get("/todoer/api/v1/tasks/id/{task_id}", response_model=Task)
-async def get_task_id(task: Task = Depends(get_task_id_or_404)) -> Task:
+async def get_task_id(task: Task = Depends(get_task_id_or_404_v0)) -> Task:
     logger.info(f"get task by ID {task.id}")
     return task
 
@@ -229,7 +231,7 @@ async def get_task_id(task: Task = Depends(get_task_id_or_404_v2)) -> Task:
 
 
 @app.post("/todoer/api/v1/tasks", status_code=201, response_model=Task)
-async def create_task(task: TaskCreate, database=Depends(get_database)) -> Task:
+async def create_task(task: TaskCreate, database=Depends(get_database_v0)) -> Task:
     try:
         logger.info(f"request to create task in project {task.project}")
         added_task = await database.add(task)
@@ -255,7 +257,7 @@ async def create_task_v2(task: TaskCreate, database=Depends(get_database_v2)) ->
 
 @app.put("/todoer/api/v1/tasks/{task_key}", response_model=Task)
 async def update_task(
-    task_key: str, task: TaskUpdate, database=Depends(get_database)
+    task_key: str, task: TaskUpdate, database=Depends(get_database_v0)
 ) -> Task:
     try:
         logger.info(f"request to update task: {task_key}")
@@ -279,7 +281,7 @@ async def update_task_v2(
 
 @app.patch("/todoer/api/v1/tasks/{task_key}", response_model=Task)
 async def patch_task(
-    task_key: str, task: TaskPartialUpdate, database=Depends(get_database)
+    task_key: str, task: TaskPartialUpdate, database=Depends(get_database_v0)
 ) -> Task:
     try:
         logger.info(f"request to patch task: {task_key}")
@@ -301,7 +303,7 @@ async def patch_task_v2(
 
 
 @app.delete("/todoer/api/v1/tasks/{task_key}", status_code=204)
-async def del_task(task_key: str, database=Depends(get_database)) -> None:
+async def del_task(task_key: str, database=Depends(get_database_v0)) -> None:
     try:
         logger.info(f"request to delete task: {task_key}")
         await database.delete(task_key)
@@ -319,7 +321,7 @@ async def del_task(
 
 
 @app.delete("/todoer/admin/v1/tasks", status_code=204)
-async def del_all_task(database=Depends(get_database)):
+async def del_all_task(database=Depends(get_database_v0)):
     try:
         logger.info("request to delete all tasks")
         await database.delete_all()
