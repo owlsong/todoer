@@ -5,7 +5,7 @@ from fastapi.encoders import jsonable_encoder
 import datetime as dt
 from todoer_api import __version__, __service_name__
 from app.data_layer import database as db
-from .conftest import NUM_INIT_TASKS, compare_models, new_test_task, get_url
+from .conftest import compare_models, new_test_task, get_url
 from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 from typing import Union
 from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
