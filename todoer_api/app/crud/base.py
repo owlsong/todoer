@@ -139,7 +139,7 @@ class CRUDMongoBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         return await self.get(obj_original.id)
 
     async def delete(self, *, id: Any) -> ModelType:
-        obj = self.get(id)
+        obj = await self.get(id)
         await self._collection.delete_one({"_id": id})
         return obj
 

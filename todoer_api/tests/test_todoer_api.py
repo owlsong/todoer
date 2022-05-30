@@ -9,10 +9,20 @@ from .conftest import NUM_INIT_TASKS, compare_models, new_test_task
 from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 import logging
 from typing import Union
+from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
 
 
-def get_url(partial_url, api_ver=1) -> str:
+def get_url(partial_url, api_ver=2) -> str:
     return f"/api/v{api_ver}/{partial_url}"
+
+
+async def get_first_task(test_client: httpx.AsyncClient):
+    # get 1st task from get all
+    response = await test_client.get(get_url("tasks"))
+    assert response.status_code == status.HTTP_200_OK
+    response_body = response.json()
+    assert len(response_body) > 0
+    return Task(**(response_body[0]))
 
 
 @pytest.mark.asyncio
@@ -22,7 +32,7 @@ class TestInfo:
 
     async def test_ping(self, test_client: httpx.AsyncClient):
         pre_time = dt.datetime.now()
-        response = await test_client.get(get_url("ping"))
+        response = await test_client.get(get_url("ping", 1))
         assert response.status_code == status.HTTP_200_OK
 
         response_body = response.json()
@@ -34,62 +44,74 @@ class TestInfo:
         assert dur_secs < 0.5
 
     async def test_read_info(self, test_client: httpx.AsyncClient):
-        response = await test_client.get(get_url("info"))
+        response = await test_client.get(get_url("info", 1))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert response_body["service"] == __service_name__
-        assert response_body["data_source"] in db.get_database_types()
         assert response_body["version"] == __version__
 
 
 @pytest.mark.asyncio
-class TestTasks:
+class TestTasksGet:
     BAD_KEY = "bad_id"
 
     async def test_get_not_existing(
-        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database
     ):
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
         # confirm not in db
         bad_key = self.BAD_KEY
-        with pytest.raises(db.DataLayerException):
-            await test_database.get(bad_key)
+        task = await task_mgr.get_by_key("key", bad_key)
+        assert task is None
         # now check for correct REST code
         response = await test_client.get(get_url(f"tasks/{bad_key}"))
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_init_num(self, test_client: httpx.AsyncClient, test_database):
+    async def test_get_not_existing(
+        self, test_client: httpx.AsyncClient, test_database
+    ):
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
+        # confirm not in db
+        bad_key = self.BAD_KEY
+        task = await task_mgr.get_by_key("key", bad_key)
+        assert task is None
+        # now check for correct REST code
+        response = await test_client.get(get_url(f"tasks/{bad_key}"))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    async def test_init_num(
+        self, test_client: httpx.AsyncClient, test_database: DataObjectManager
+    ):
+        print("THC print db collection")
+        print(str(test_database.collection))
+
         response = await test_client.get(get_url("tasks"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
+        print("THC print init tasks")
+        print_flds = ["_id", "key", "created", "updated"]
+        for t in response_body:
+            print([t[x] for x in print_flds])
+
         assert len(response_body) == NUM_INIT_TASKS
 
-    # class XxTestTasks:
-    #     BAD_KEY = "bad_id"
-
     async def test_init_tasks_get_all(
-        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: DataObjectManager
     ):
         response = await test_client.get(get_url("tasks"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
 
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
         for tsk_json in response_body:
             task = Task(**tsk_json)
-            task_db = await test_database.get(task.key)
+            task_db = await task_mgr.get_by_key("key", task.key)
             assert compare_models(task, task_db)
 
-    async def get_first_task(self, test_client: httpx.AsyncClient):
-        # get 1st task from get all
-        response = await test_client.get(get_url("tasks"))
-        assert response.status_code == status.HTTP_200_OK
-        response_body = response.json()
-        assert len(response_body) > 0
-        return Task(**(response_body[0]))
-
     async def test_init_tasks_get(
-        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: DataObjectManager
     ):
-        task_orig = await self.get_first_task(test_client)
+        task_orig = await get_first_task(test_client)
         task_key = task_orig.key
 
         # get specific task and db - compare
@@ -97,11 +119,18 @@ class TestTasks:
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         task_get = Task(**response_body)
-        task_db = await test_database.get(task_orig.key)
+
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
+        task_db = await task_mgr.get_by_key("key", task_orig.key)
         assert compare_models(task_db, task_get)
 
+
+@pytest.mark.asyncio
+class TestTasksModify:
+    BAD_KEY = "bad_id"
+
     async def test_task_add_del(
-        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: DataObjectManager
     ):
         # add task
         new_task_in = new_test_task(desc="new task")
@@ -112,7 +141,9 @@ class TestTasks:
         # get task from response and DB - compare
         response_body = response.json()
         task = Task(**response_body)
-        task_db = await test_database.get(task.key)
+
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
+        task_db = await task_mgr.get_by_key("key", task.key)
         assert compare_models(task, task_db)
 
         # delete new task
@@ -142,10 +173,10 @@ class TestTasks:
         return response
 
     async def test_task_update(
-        self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
+        self, test_client: httpx.AsyncClient, test_database: DataObjectManager
     ):
         # get existing task
-        task_orig = await self.get_first_task(test_client)
+        task_orig = await get_first_task(test_client)
         task_key = task_orig.key
 
         # modify task & compare wth DB
@@ -155,7 +186,9 @@ class TestTasks:
             test_client, task_key, TaskUpdate(**task_updated.dict())
         )
         task_upd_rsp = Task(**(response.json()))
-        task_db = await test_database.get(task_orig.key)
+
+        task_mgr: CRUDMongoBase = test_database.get_object_manager("Task")
+        task_db = await task_mgr.get_by_key("key", task_orig.key)
         assert compare_models(task_db, task_upd_rsp)
 
         # revert tasks task & compare wth DB
@@ -163,14 +196,14 @@ class TestTasks:
             test_client, task_key, TaskUpdate(**task_orig.dict())
         )
         task_upd_rsp = Task(**(response.json()))
-        task_db = await test_database.get(task_orig.key)
+        task_db = await task_mgr.get_by_key("key", task_orig.key)
         assert compare_models(task_db, task_upd_rsp)
 
     async def test_task_update_bad_id(
         self, test_client: httpx.AsyncClient, test_database: db.TaskDatabase
     ):
         # get existing task
-        task_orig = await self.get_first_task(test_client)
+        task_orig = await get_first_task(test_client)
 
         # modify task with bad ID
         task_updated = task_orig.copy()
@@ -182,7 +215,7 @@ class TestTasks:
 
     async def test_task_update_bad_task(self, test_client: httpx.AsyncClient):
         # get existing task
-        task_orig = await self.get_first_task(test_client)
+        task_orig = await get_first_task(test_client)
 
         bad_task_in = {"project bad name": "this wont work"}
         response = await test_client.put(

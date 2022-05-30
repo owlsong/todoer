@@ -16,12 +16,19 @@ class DataObjectManager:
 
     def __init__(self, collection: MongoCollection, id_gen: TaskIdGenerator) -> None:
         super().__init__()
+        self.db_type = "Data-object-manager-mongo"
         self.collection = collection
         self.id_gen = id_gen
         # TODO!!! removme collection name from MongoConnection
         task = CRUDTask(Task, self.collection, self.id_gen)
         user = CRUDUser(User, self.collection)
-        self._factory = {"Task": task, Task: task, "User": user, User: user}
+        self._factory = {"task": task, Task: task, "user": user, User: user}
 
     def get_object_manager(self, object_type: Any) -> CRUDMongoBase:
-        return self._factory[object_type]
+        if isinstance(object_type, str):
+            return self._factory[object_type.lower()]
+        else:
+            return self._factory[object_type]
+
+    async def drop_database(self):
+        await self.collection.drop_db()

@@ -84,7 +84,7 @@ async def get_task_or_404_v0(task_key: str, database=Depends(get_database_v0)) -
 
 async def get_task_or_404_v2(task_key: str, database=Depends(get_database_v2)) -> Task:
     task_mgr: CRUDMongoBase = database.get_object_manager("Task")
-    task = await task_mgr.filter_one({"key": task_key})
+    task = await task_mgr.get_by_key("key", task_key)
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task {task_key} not found")
     return task
@@ -174,9 +174,6 @@ async def test(test_id: int, qry: Optional[str] = None):
 # region tasks
 
 
-#     pagination: Tuple[int, int] = Depends(pagination), database=Depends(get_database)
-# ) -> List[Task]:
-#     return await database.get_all(*pagination)
 @app.get("/todoer/api/v1/tasks")
 async def get_tasks(
     pagination: Dict[str, int] = Depends(pagination_dict),
