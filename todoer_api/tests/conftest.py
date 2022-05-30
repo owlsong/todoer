@@ -2,11 +2,12 @@ import asyncio
 import httpx
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
-from app.main import app, get_database_v0, get_database_v2
+from app.main import app, get_database
 from app.model.task import TaskCreate
 from app.data_layer import database as db
 from typing import Optional, Any
 from app.data_layer import data_obj_mgr as dom
+
 
 # region global vars
 
@@ -29,6 +30,11 @@ async def get_test_database() -> db.TaskDatabase:
 # endregion global vars
 
 # region helpers
+
+
+def get_url(sub_directory_struct) -> str:
+    api_ver = 1
+    return f"/api/v{api_ver}/{sub_directory_struct}"
 
 
 def new_test_task(i: Optional[int] = None, desc: Optional[str] = None) -> TaskCreate:
@@ -81,7 +87,7 @@ async def test_database():
 async def test_client():
     # an async client for use in tests
     # CARGO
-    app.dependency_overrides[get_database_v2] = get_test_database
+    app.dependency_overrides[get_database] = get_test_database
     async with LifespanManager(app):
         async with httpx.AsyncClient(
             app=app, base_url="http://127.0.0.1:8000/todoer"

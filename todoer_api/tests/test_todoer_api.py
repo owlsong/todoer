@@ -5,15 +5,11 @@ from fastapi.encoders import jsonable_encoder
 import datetime as dt
 from todoer_api import __version__, __service_name__
 from app.data_layer import database as db
-from .conftest import NUM_INIT_TASKS, compare_models, new_test_task
+from .conftest import NUM_INIT_TASKS, compare_models, new_test_task, get_url
 from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 import logging
 from typing import Union
 from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
-
-
-def get_url(partial_url, api_ver=2) -> str:
-    return f"/api/v{api_ver}/{partial_url}"
 
 
 async def get_first_task(test_client: httpx.AsyncClient):
@@ -32,7 +28,7 @@ class TestInfo:
 
     async def test_ping(self, test_client: httpx.AsyncClient):
         pre_time = dt.datetime.now()
-        response = await test_client.get(get_url("ping", 1))
+        response = await test_client.get(get_url("ping"))
         assert response.status_code == status.HTTP_200_OK
 
         response_body = response.json()
@@ -44,7 +40,7 @@ class TestInfo:
         assert dur_secs < 0.5
 
     async def test_read_info(self, test_client: httpx.AsyncClient):
-        response = await test_client.get(get_url("info", 1))
+        response = await test_client.get(get_url("info"))
         assert response.status_code == status.HTTP_200_OK
         response_body = response.json()
         assert response_body["service"] == __service_name__
