@@ -98,14 +98,13 @@ async def test_client():
 @pytest_asyncio.fixture(autouse=True, scope="module")
 async def initial_tasks():
     # autouse - means does not need otb eexplicitly called as a param
-    # CARGO
-
-    # PROB! - any await call to task_mgr prevents from closing!
+    # adds intinal tasks and als oreturns them for easy reference
     global test_task_db
     task_mgr = test_task_db.get_object_manager("Task")
     initial_tasks = [new_test_task() for i in range(NUM_INIT_TASKS)]
+    inserted_tasks = []
     for task in initial_tasks:
-        await task_mgr.add(obj_in=task)
+        inserted_tasks.append(await task_mgr.add(obj_in=task))
 
-    yield initial_tasks
+    yield inserted_tasks
     await test_task_db.drop_database()
