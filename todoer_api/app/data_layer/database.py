@@ -1,20 +1,23 @@
 # import imp
-from sqlite3 import connect
-from .model import Task, TaskCreate, PyObjectId, ObjectId, TaskUpdate, TaskPartialUpdate
+# from sqlite3 import connect
 import datetime as dt
-from motor.motor_asyncio import (
-    AsyncIOMotorClient,
-    AsyncIOMotorDatabase,
-)
-from pymongo import ReturnDocument
-from typing import Any, Union, List
-
-
-from fastapi.encoders import jsonable_encoder
-
+from typing import Any, List, Union
+from app.data_layer.data_obj_mgr import DataObjectManager
+from black import TRANSFORMED_MAGICS
 
 # from app.core.config import get_logger
+# from motor.motor_asyncio import (
+#     AsyncIOMotorClient,
+#     AsyncIOMotorCollection,
+# )
+# from fastapi.encoders import jsonable_encoder
+# from pymongo import ReturnDocument
 from app.core.config import get_logger
+from app.model.base import ObjectId
+from app.model.task import Task, TaskCreate, TaskPartialUpdate, TaskUpdate
+from .mongo_connection import MongoConnection, MongoCollection
+from .dl_exception import DataLayerException
+from .id_generator import TaskIdGeneratorInmem, TaskIdGeneratorMogo
 
 logger = get_logger("data layer")
 
@@ -24,35 +27,22 @@ logger = get_logger("data layer")
 # abstract_factory that builds DB + ID_generator + Crud for each model
 
 
-class DataLayerException(Exception):
-    pass
-
-
-class TaskIdGenerator:
-    """Class to generate ids for tasks."""
-
-    INIT_VALUE = 1
-
-    def get_next_id(self, index: Any) -> int:
-        pass
-
-
 class TaskDatabase:
     """Persists tasks internally whilst exposing the CRUD operations on Task objects."""
 
-    def __init__(self, db_type) -> None:
+    def __init__(self, db_type, id_gen) -> None:
         self.db_type = db_type
-        self.id_gen = None
+        self.id_gen = id_gen
 
-    def get(self, task_id: Any) -> Task:
+    async def get(self, task_id: Any) -> Task:
         """Get a list of tasks with id=task_id, up to user to validate number of tasks."""
         raise NotImplementedError()
 
-    def get_all(self) -> list[Task]:
+    async def get_all(self, skip=0, limit=10) -> list[Task]:
         """Get all tasks as a list of tasks, empty if none."""
         raise NotImplementedError()
 
-    def add(self, task: TaskCreate) -> Task:
+    async def add(self, task: TaskCreate) -> Task:
         """Add a new task and return the created task, (fail if task.id already exists).
 
         invariant:  id's are unique
@@ -61,21 +51,21 @@ class TaskDatabase:
         """
         raise NotImplementedError()
 
-    def update(
+    async def update(
         self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
     ) -> Task:
         """Update a single task with id=task_id return updated task, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         """Delete a single task with id=task_id return nothing, (fail if task_id does not exist)."""
         raise NotImplementedError()
 
-    def delete_all(self) -> None:
+    async def delete_all(self) -> None:
         """Delete all tasks return nothing, (do nothing if no tasks exist)."""
         raise NotImplementedError()
 
-    def drop_database(self) -> None:
+    async def drop_database(self) -> None:
         """Drop the database."""
         raise NotImplementedError()
 
@@ -83,102 +73,22 @@ class TaskDatabase:
 # region MongoDB
 
 
-class TaskIdGeneratorMogo(TaskIdGenerator):
-    def __init__(self, **kwargs) -> None:
-        super().__init__()
-        # self.client = kwargs["client"]
-        # self.db_name = kwargs["db_name"]
-        self.collection_name = "id_generator"
-        # self.db = self.client[self.db_name]
-        self.db = kwargs["db"]
-        self.id_collection = self.db[self.collection_name]
-        # each item of form: { "index": "project-x", "next_id": 23 }
-
-    async def get_next_id(self, index: str) -> int:
-        rslt = await self.id_collection.find_one_and_update(
-            {"index": index},
-            {"$inc": {"next_id": 1}},
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-        return rslt["next_id"]
-
-    async def get_next_id_deprecated(self, index: str) -> int:
-        index_dict = {"index": index}
-        id_list = list(self.id_collection.find(index_dict))
-
-        indexed_dict = await self.id_collection.find_one(index_dict)
-
-        if indexed_dict is None:
-            # no IDs allocated yet -> current=0 next=1
-            insert_dict = index_dict
-            insert_dict["next_id"] = self.INIT_VALUE + 1
-            self.id_collection.insert_one(insert_dict)
-            return self.INIT_VALUE
-        else:
-            # upd_dict = indexed_dict
-            curr_id = indexed_dict["next_id"]
-            indexed_dict["next_id"] = curr_id + 1
-            self.id_collection.replace_one(index_dict, indexed_dict)
-            return curr_id
-
-
-class MongoConnection:
-    def __init__(
-        self, username: str, password: str, host: str, set_client: bool = True
-    ) -> None:
-        self._username = username
-        self._password = password
-        self._host = host
-        self._url = f"mongodb://{self._username}:{self._password}@{self._host}:27017/"
-        self._client: AsyncIOMotorClient = (
-            AsyncIOMotorClient(self._url) if set_client else None
-        )
-
-    def __call__(self) -> AsyncIOMotorClient:
-        return self._client
-
-    def __del__(self) -> None:
-        if self._client is not None:
-            self._client.close()
-
-    @property
-    def url(self) -> str:
-        return self._url
-
-    @property
-    def client(self) -> AsyncIOMotorClient:
-        return self._client
-
-    @client.setter
-    def client(self, newValue: AsyncIOMotorClient) -> None:
-        self._client = newValue
-
-
 class MongoDatabase(TaskDatabase):
     """Stores tasks in a mongo database public API refers to Task objects (internal as dicts)."""
 
-    def __init__(self, connection: MongoConnection, db_name: str = "taskdb") -> None:
-        super().__init__("mongo")
-        self.connection = connection
-        self.db_name = db_name
-        self.collection_name = "tasks"
-        self.db = None
-        self.tasks = None
-        self.id_gen = None
-        self._setdb()
-
-    def _setdb(self) -> None:
-        self.db = self.connection()[self.db_name]
-        self.tasks = self.db[self.collection_name]
-        self.id_gen = TaskIdGeneratorMogo(db=self.db)
+    def __init__(
+        self, task_collection: MongoCollection, id_gen: TaskIdGeneratorMogo
+    ) -> None:
+        super().__init__("mongo", id_gen)
+        self._task_collection = task_collection
+        self.tasks = self._task_collection.get_collection()
 
     def __del__(self):
-        del self.connection
+        del self._task_collection
 
     async def _get_by_id(self, task_id, must_be_equal_to=None) -> list[dict]:
         """Get tasks that match the id, specifying must_be_equal_to adds a check of number or tasks."""
-        query = self.tasks.find({"id": task_id})
+        query = self.tasks.find({"_id": task_id})
         item_list = [Task(**raw_task) async for raw_task in query]
         num = len(item_list)
         if must_be_equal_to is not None and must_be_equal_to != num:
@@ -206,7 +116,8 @@ class MongoDatabase(TaskDatabase):
         return rslts[0]
 
     async def get_all(self, skip=0, limit=10) -> list[Task]:
-        query = self.tasks.find({}, skip=skip, limit=limit)
+        # 1 = ascending, -1 = descending
+        query = self.tasks.find({}, skip=skip, limit=limit).sort("key", 1)
         results = [Task(**raw_task) async for raw_task in query]
         return results
 
@@ -263,31 +174,13 @@ class MongoDatabase(TaskDatabase):
         await self.tasks.delete_many({})
 
     async def drop_database(self) -> None:
-        await self.connection._client.drop_database(self.db_name)
-        self.db = None
-        self._setdb()
-        # await self.delete_all()
+        await self._task_collection.drop_db()
+        # await self._task_collection().drop_database(self.db_name)
+        # self.db = None
+        # self.tasks = self._task_collection.get_collection()
 
 
 # endregion
-
-# region InMemory
-class TaskIdGeneratorInmem(TaskIdGenerator):
-    def __init__(self) -> None:
-        super().__init__()
-        # id indexed by: user: str, project: str
-        self.ids = {}
-
-    def get_next_id(self, index: Any) -> int:
-        # # index = (user, project)
-        # index = project
-        try:
-            rslt = self.ids[index]
-            self.ids[index] = rslt + 1
-            return rslt
-        except KeyError:
-            self.ids[index] = self.INIT_VALUE + 1
-            return self.INIT_VALUE
 
 
 class InMemDatabase(TaskDatabase):
@@ -313,7 +206,7 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             return None
 
-    def get(self, id: Any) -> Task:
+    async def get(self, id: Any) -> Task:
         """Gets a task by id(ObjectId) or key(str) and raises Error if does not exist."""
         try:
             if isinstance(id, ObjectId):
@@ -322,10 +215,13 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             raise DataLayerException(f"Task with seq {id} could not be found")
 
-    def get_all(self) -> list[Task]:
-        return list(self.data.values())
+    async def get_all(self, skip=0, limit=10) -> list[Task]:
+        data_items = self.data.items()
+        sorted_data = sorted(data_items)
+        sorted_data = sorted_data[skip : skip + limit]
+        return [task for _, task in sorted_data]
 
-    def add(self, task_in: TaskCreate) -> Task:
+    async def add(self, task_in: TaskCreate) -> Task:
         new_data = task_in.get_dict_inc_seq(self.seq_gen.get_next_id(task_in.project))
         # TODO - set seq, key in pydantic model logic
         new_task = Task(**new_data)
@@ -340,7 +236,7 @@ class InMemDatabase(TaskDatabase):
             )
         return self._get_task_by_index(new_key)
 
-    def update(
+    async def update(
         self, task_key: str, task_in: Union[TaskUpdate, TaskPartialUpdate]
     ) -> Task:
         stored_task = self._get_task_by_index(task_key)
@@ -357,7 +253,7 @@ class InMemDatabase(TaskDatabase):
 
         return updated_task
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         try:
             # ensure in indexes before delete
             del_task = self.data_index[key]
@@ -367,13 +263,15 @@ class InMemDatabase(TaskDatabase):
         except KeyError:
             raise DataLayerException(f"Delete task with key {key} could not be found")
 
-    def delete_all(self) -> None:
+    async def delete_all(self) -> None:
         self.data.clear()
         self.data_index.clear()
 
-    def drop_database(self) -> None:
-        """No op as is a volatile store."""
-        pass
+    async def drop_database(self) -> None:
+        self.data = {}
+        self.data_index = {}
+        self.id_gen = TaskIdGeneratorInmem()
+        self.seq_gen = TaskIdGeneratorInmem()
 
 
 # endregion
@@ -387,8 +285,22 @@ def get_database_types() -> List[str]:
 
 
 def database_factory(db_type: str, **kwargs) -> TaskDatabase:
+    db_name = kwargs.get("db_name", "taskdb")
+    task_collection_name = kwargs.get("task_collection_name", "tasks")
+    id_db_name = kwargs.get("id_db_name", "taskdb_id")
+    id_collection_name = kwargs.get("id_collection_name", "tasks")
+    logger.info(f"DB-factory type={db_type} DB={db_name} Table={task_collection_name}")
     if db_type == "mongo":
-        return MongoDatabase(MongoConnection("localdev", "localdev", "mongo"), **kwargs)
+        mongo_conn = MongoConnection("localdev", "localdev", "mongo")
+        mongo_coll = MongoCollection(mongo_conn, db_name, task_collection_name)
+        mongo_id_coll = MongoCollection(mongo_conn, id_db_name, id_collection_name)
+        return MongoDatabase(mongo_coll, TaskIdGeneratorMogo(mongo_id_coll))
+    elif db_type == "mongo-data-obj-mgr":
+        mongo_conn = MongoConnection("localdev", "localdev", "mongo")
+        mongo_coll = MongoCollection(mongo_conn, db_name, task_collection_name)
+        mongo_id_coll = MongoCollection(mongo_conn, id_db_name, id_collection_name)
+        id_gen = TaskIdGeneratorMogo(mongo_id_coll)
+        return DataObjectManager(mongo_coll, id_gen)
     elif db_type == "in-memory":
         return InMemDatabase(**kwargs)
     else:

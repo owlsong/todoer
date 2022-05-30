@@ -1,35 +1,31 @@
 from operator import ge
-from typing import List, Optional, Tuple  # Dict,
+from typing import List, Optional, Tuple, Dict
 from fastapi import FastAPI, HTTPException, Depends, Query, status
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from fastapi import Request  # , Response
-
-# from fastapi.responses import JSONResponse
-# from pymongo.common import validate_server_api_or_none
-
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-
-
 import datetime as dt
 
 from app.core.config import get_logger
-
-
-from todoer_api.model import (
+from app.model.base import ObjectId
+from app.model.todoerinfo import TodoerInfo
+from app.model.task import (
     Task,
-    TodoerInfo,
     TaskCreate,
     TaskUpdate,
     TaskPartialUpdate,
-    ObjectId,
 )
-from todoer_api.data_layer import (
+from app.data_layer.dl_exception import DataLayerException
+from app.data_layer.database import (
     TaskDatabase,
-    DataLayerException,
     database_factory,
 )
+from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
 from todoer_api import __version__, __service_name__
+
+# from fastapi.encoders import jsonable_encoder
+# from starlette.responses import JSONResponse
 
 logger = get_logger("todoer")
 BASE_PATH = Path(__file__).resolve().parent
@@ -37,23 +33,17 @@ TEMPLATES = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 
 
 # ------------------------------------------------------------------------------
+# Globals
 app = FastAPI()
-
-# ------------------------------------------------------------------------------
-# task_db: TaskDatabase = database_factory("mongo")  # None
-task_db: TaskDatabase = database_factory("mongo")
+# this is intiatied in the startup ans shutdown functions (must be async)
+object_db: DataObjectManager = None
 
 
-# async def build_database() -> TaskDatabase:
-#     return database_factory("mongo")
+# region dependencies
 
 
-async def get_database() -> TaskDatabase:
-    # !!! for some reason when trying to saccess the DB via the data layer
-    # it creates an error: attached to a different loop
-    # don't know why left it to a local variable in main
-    # global task_db
-    return task_db
+async def get_database() -> DataObjectManager:
+    return object_db
 
 
 def pagination(
@@ -64,40 +54,60 @@ def pagination(
     return (skip, capped_limit)
 
 
+def pagination_dict(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=0),
+) -> Dict[str, int]:
+    capped_limit = min(100, limit)
+    return {"skip": skip, "limit": capped_limit}
+
+
 async def get_task_or_404(task_key: str, database=Depends(get_database)) -> Task:
-    try:
-        return await database.get(task_key)
-    except DataLayerException:
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    task = await task_mgr.get_by_key("key", task_key)
+    if task is None:
         raise HTTPException(status_code=404, detail=f"Task {task_key} not found")
+    return task
 
 
-# ------------------------------------------------------------------------------
+async def get_task_id_or_404(task_id: str, database=Depends(get_database)) -> Task:
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    task = await task_mgr.get(ObjectId(task_id))
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return task
 
-# database_builder=Depends(build_database)
+
+# endregion dependencies
+
+# region non-data
+
+
 @app.on_event("startup")
 async def startup():
-    global task_db
-    # await
-    task_db = database_factory("mongo")  #
+    global object_db
+    object_db = database_factory("mongo-data-obj-mgr")
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    global task_db
-    del task_db
-    task_db = None
+    global object_db
+    del object_db
+    object_db = None
 
 
 @app.get("/todoer/v1/tasks", status_code=200)
 async def root(
     request: Request,
     database=Depends(get_database),
-    pagination: Tuple[int, int] = Depends(pagination),
-) -> dict:  # 2
+    pagination: Tuple[int, int] = Depends(pagination_dict),
+) -> dict:
     """
     GET tasks as html page
     """
-    tasks = await database.get_all(*pagination)
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    tasks = await task_mgr.get_all(**pagination)
+    # tasks = await database.get_all(*pagination)
     return TEMPLATES.TemplateResponse(
         "index.html",
         {"request": request, "tasks": tasks},
@@ -126,15 +136,34 @@ async def test(test_id: int, qry: Optional[str] = None):
     return {"test_id": test_id, "q": qry}
 
 
+# endregion
+
+# region tasks
+
+
 @app.get("/todoer/api/v1/tasks")
 async def get_tasks(
-    pagination: Tuple[int, int] = Depends(pagination), database=Depends(get_database)
+    pagination: Dict[str, int] = Depends(pagination_dict),
+    database=Depends(get_database),
 ) -> List[Task]:
-    return await database.get_all(*pagination)
+    task_mgr = database.get_object_manager("Task")
+    return await task_mgr.get_all(**pagination)
 
 
 @app.get("/todoer/api/v1/tasks/{task_key}", response_model=Task)
-async def get_task_id(task: Task = Depends(get_task_or_404)) -> Task:
+async def get_task_key(task: Task = Depends(get_task_or_404)) -> Task:
+    # to return with id iso _id do the follwing but breaks tests
+    # as rebuild from dict assume _id is present
+    # retrun a JSONResponse to avoid casting back to Task which uses _id
+    # tsk_dict = jsonable_encoder(task, by_alias=False)
+    # return JSONResponse(content=tsk_dict)
+    logger.info(f"get task by key {task.key} id = {task.id}")
+    return task
+
+
+@app.get("/todoer/api/v1/tasks/id/{task_id}", response_model=Task)
+async def get_task_id(task: Task = Depends(get_task_id_or_404)) -> Task:
+    logger.info(f"get task by ID {task.id}")
     return task
 
 
@@ -142,9 +171,10 @@ async def get_task_id(task: Task = Depends(get_task_or_404)) -> Task:
 async def create_task(task: TaskCreate, database=Depends(get_database)) -> Task:
     try:
         logger.info(f"request to create task in project {task.project}")
-        added_task = await database.add(task)
+        task_mgr = database.get_object_manager("Task")
+        added_task = await task_mgr.add(obj_in=task)
         return added_task
-    except DataLayerException:
+    except ValueError:
         raise HTTPException(
             status_code=409, detail=f"Adding task key {task.key} failed, already exists"
         )
@@ -152,40 +182,42 @@ async def create_task(task: TaskCreate, database=Depends(get_database)) -> Task:
 
 @app.put("/todoer/api/v1/tasks/{task_key}", response_model=Task)
 async def update_task(
-    task_key: str, task: TaskUpdate, database=Depends(get_database)
+    task_upd: TaskUpdate,
+    task_orig: Task = Depends(get_task_or_404),
+    database=Depends(get_database),
 ) -> Task:
-    try:
-        logger.info(f"request to update task: {task_key}")
-        udp_task = await database.update(task_key, task)
-        return udp_task
-    except DataLayerException:
-        raise HTTPException(status_code=404, detail=f"Task {task_key} not found")
+    logger.info(f"request to update task: {task_orig.key}")
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    task_new = await task_mgr.update(obj_original=task_orig, obj_update=task_upd)
+    return task_new
 
 
 @app.patch("/todoer/api/v1/tasks/{task_key}", response_model=Task)
 async def patch_task(
-    task_key: str, task: TaskPartialUpdate, database=Depends(get_database)
+    task_upd: TaskPartialUpdate,
+    task_orig: Task = Depends(get_task_or_404),
+    database=Depends(get_database),
 ) -> Task:
-    try:
-        logger.info(f"request to patch task: {task_key}")
-        return await database.update(task_key, task)
-    except DataLayerException:
-        raise HTTPException(status_code=404, detail=f"Task {task_key} not found")
+    logger.info(f"request to patch task: {task_orig.key}")
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    task_new = await task_mgr.update(obj_original=task_orig, obj_update=task_upd)
+    return task_new
 
 
 @app.delete("/todoer/api/v1/tasks/{task_key}", status_code=204)
-async def del_task(task_key: str, database=Depends(get_database)) -> None:
-    try:
-        logger.info(f"request to delete task: {task_key}")
-        await database.delete(task_key)
-    except DataLayerException:
-        raise HTTPException(status_code=404, detail=f"Delete task {task_key} not found")
+async def del_task(
+    task: Task = Depends(get_task_or_404), database=Depends(get_database)
+) -> None:
+    logger.info(f"request to delete task: {task.key}")
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    await task_mgr.delete(id=task.id)
 
 
 @app.delete("/todoer/admin/v1/tasks", status_code=204)
 async def del_all_task(database=Depends(get_database)):
-    try:
-        logger.info("request to delete all tasks")
-        await database.delete_all()
-    except DataLayerException:
-        raise HTTPException(status_code=404, detail=f"Failed to delete all tasks")
+    logger.info("request to delete all tasks")
+    task_mgr: CRUDMongoBase = database.get_object_manager("Task")
+    await task_mgr.delete_all()
+
+
+# endregion
