@@ -145,3 +145,6 @@ class CRUDMongoBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
     async def delete_all(self) -> None:
         await self._collection.delete_many({})
+
+    async def drop_db(self) -> None:
+        await self.db_collection.drop_db()

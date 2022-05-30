@@ -27,11 +27,14 @@ class TaskIdGenerator:
     def get_next_id(self, index: Any) -> int:
         pass
 
+    async def reset(self):
+        pass
+
 
 class TaskIdGeneratorMogo(TaskIdGenerator):
     def __init__(self, collection: MongoCollection) -> None:
         super().__init__()
-        self.collection = collection
+        self.collection: MongoCollection = collection
         # self.id_collection = collection.get_collection()
         # each item of form: { "index": "project-x", "next_id": 23 }
 
@@ -64,6 +67,9 @@ class TaskIdGeneratorMogo(TaskIdGenerator):
             self.collection().replace_one(index_dict, indexed_dict)
             return curr_id
 
+    async def reset(self):
+        await self.collection.drop_db()
+
 
 class TaskIdGeneratorInmem(TaskIdGenerator):
     def __init__(self) -> None:
@@ -81,3 +87,6 @@ class TaskIdGeneratorInmem(TaskIdGenerator):
         except KeyError:
             self.ids[index] = self.INIT_VALUE + 1
             return self.INIT_VALUE
+
+    def reset(self):
+        self.ids = {}

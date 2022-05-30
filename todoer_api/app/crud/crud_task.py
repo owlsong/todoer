@@ -35,3 +35,7 @@ class CRUDTask(CRUDMongoBase[Task, TaskCreate, TaskUpdate]):
         # result = await self.tasks.insert_one(new_task.dict(by_alias=True))
         logger.info(f"Created task with ID {result.inserted_id}")
         return await self.get(result.inserted_id)
+
+    async def drop_db(self) -> None:
+        await super().drop_db()
+        await self.id_gen.reset()

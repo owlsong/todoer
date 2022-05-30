@@ -27,6 +27,7 @@ logger = get_logger("data layer")
 # abstract_factory that builds DB + ID_generator + Crud for each model
 
 
+# TODO! - remove these old DB classes
 class TaskDatabase:
     """Persists tasks internally whilst exposing the CRUD operations on Task objects."""
 

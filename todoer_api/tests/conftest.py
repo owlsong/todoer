@@ -11,19 +11,16 @@ from app.data_layer import data_obj_mgr as dom
 
 # region global vars
 
-old_test_task_db: db.TaskDatabase = db.database_factory(
-    "mongo", db_name="test_taskdb", id_db_name="test_taskdb_id"
-)
 test_object_mgr: dom.DataObjectManager = db.database_factory(
     "mongo-data-obj-mgr", db_name="test_taskdb", id_db_name="test_taskdb_id"
 )
 
 test_task_db = test_object_mgr
 
-NUM_INIT_TASKS = 2
+NUM_INIT_TASKS = 3
 
 
-async def get_test_database() -> db.TaskDatabase:
+async def get_test_database() -> dom.DataObjectManager:
     return test_task_db
 
 
@@ -107,4 +104,5 @@ async def initial_tasks():
         inserted_tasks.append(await task_mgr.add(obj_in=task))
 
     yield inserted_tasks
-    await test_task_db.drop_database()
+    await task_mgr.drop_db()
+    # await test_task_db.drop_database()

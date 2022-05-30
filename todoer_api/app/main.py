@@ -17,10 +17,7 @@ from app.model.task import (
     TaskPartialUpdate,
 )
 from app.data_layer.dl_exception import DataLayerException
-from app.data_layer.database import (
-    TaskDatabase,
-    database_factory,
-)
+from app.data_layer.database import database_factory
 from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
 from todoer_api import __version__, __service_name__
 

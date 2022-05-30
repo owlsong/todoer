@@ -9,6 +9,9 @@ from .conftest import NUM_INIT_TASKS, compare_models, new_test_task, get_url
 from app.model.task import Task, TaskUpdate, TaskPartialUpdate
 from typing import Union
 from app.data_layer.data_obj_mgr import DataObjectManager, CRUDMongoBase
+from app.core.config import get_logger
+
+logger = get_logger("todoer")
 
 
 async def get_first_task(test_client: httpx.AsyncClient):
